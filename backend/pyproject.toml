@@ -32,9 +32,8 @@ torchvision = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.13.1",           
-    "mypy>=1.18.2",           
-    "pytest>=8.4.2",         
-    "pytest-asyncio>=1.2.0", 
-    "httpx>=0.28.1",          
+    "ruff>=0.13.1",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "httpx>=0.28.1",
 ]
