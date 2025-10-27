@@ -3,7 +3,7 @@ from utils.file_util import is_image
 import shutil
 import difPy
 
-class rename_service():
+class rename_service:
     def __init__(self, load_path="", save_path=""):
         self.load_path = Path(load_path)
         self.save_path = Path(save_path)

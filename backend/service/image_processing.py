@@ -5,7 +5,7 @@ import torch
 import torchvision.transforms as transforms
 from config.image_formats import SUPPORTED_OUTPUT_FORMATS, SUPPORTED_INPUT_EXTENSIONS, get_supported_format
 
-class ImageService():
+class ImageService:
     def __init__(self, model_path, device):
         loader = ModelLoader()
         model = loader.load_from_file(model_path)
@@ -15,7 +15,6 @@ class ImageService():
     def get_supported_output_formats():
         return get_supported_format()
         
-    
     def upscale(self, images_path: str, save_path: str, format: str = "jpg"):
         images_path = Path(images_path)
         save_path = Path(save_path)
@@ -29,7 +28,6 @@ class ImageService():
             if image.mode == "RGBA":
                 image = image.convert('RGB')
         
-         
             to_tensor = transforms.ToTensor()
             image_tensor = to_tensor(image).unsqueeze(0).to(self.model.device)
         
