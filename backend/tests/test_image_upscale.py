@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from PIL import Image
 from unittest.mock import Mock, patch
-from service.image_processing import ImageService
+from service.image_upscaling import ImageUpscaleService
 import torch
 
 
@@ -25,7 +25,7 @@ def temp_dirs():
 
 @pytest.fixture
 def image_service():
-    with patch('service.image_processing.ModelLoader') as mock_loader:
+    with patch('service.image_upscaling.ModelLoader') as mock_loader:
         # Create a mock model that returns the same tensor (no actual upscaling)
         mock_model = Mock()
         mock_model.to.return_value = mock_model
@@ -35,7 +35,7 @@ def image_service():
         
         mock_loader.return_value.load_from_file.return_value = mock_model
         
-        return ImageService("dummy_model_path.pth", "cpu")
+        return ImageUpscaleService("dummy_model_path.pth", "cpu")
 
 
 def test_upscale_default_format(image_service, temp_dirs):
@@ -44,7 +44,7 @@ def test_upscale_default_format(image_service, temp_dirs):
     
     image_service.upscale(str(input_dir), str(output_dir))
     
-    output_files = list(output_dir.glob("*_upscaled.*"))
+    output_files = list(output_dir.glob("*.*"))
     assert len(output_files) == 1
     assert output_files[0].suffix == ".jpg"
 
@@ -55,7 +55,7 @@ def test_upscale_format_conversion(image_service, temp_dirs):
     
     image_service.upscale(str(input_dir), str(output_dir), "png")
     
-    output_files = list(output_dir.glob("*_upscaled.png"))
+    output_files = list(output_dir.glob("*.png"))
     assert len(output_files) == 1
     
     with Image.open(output_files[0]) as img:
@@ -64,7 +64,7 @@ def test_upscale_format_conversion(image_service, temp_dirs):
 
 def test_get_supported_formats():
     """Test getting supported output formats."""
-    formats = ImageService.get_supported_output_formats()
+    formats = ImageUpscaleService.get_supported_output_formats()
     
     assert isinstance(formats, list)
     assert len(formats) > 0
