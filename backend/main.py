@@ -3,6 +3,7 @@ from pathlib import Path
 from pydantic import BaseModel
 from service.image_rename import RenameService
 from service.image_upscaling import ImageUpscaleService
+from service.image_captioning import ImageCaptioningService
 from utils.image_util import get_device
 
 app = FastAPI()
@@ -19,10 +20,12 @@ class UpscaleRequest(BaseModel):
     save_path: str
     format: str
     use_tiling: bool = True
-
-@app.get("/")
-def root():
-    return {"Hello": "World"}
+    
+class CaptionRequest(BaseModel):
+    caption_model_path: str
+    load_path: str
+    save_path: str
+    prompt: str
 
 @app.post("/rename")
 def rename(request: RenameRequest):
@@ -41,6 +44,13 @@ def upscale(request: UpscaleRequest):
     service = ImageUpscaleService(device, Path(request.upscale_model_path), Path(request.load_path), Path(request.save_path), request.format)
     service.upscale(use_tiling=request.use_tiling)
     return {"status": "Upscaling Complete"}
+
+@app.post("/caption")
+def caption(request: CaptionRequest):
+    service = ImageCaptioningService(Path(request.caption_model_path), Path(request.load_path), Path(request.save_path), request.prompt)
+    service.caption_image()
+    return{"status": "Captioning Complete"}
+    
 
 @app.get("/device")
 def device():

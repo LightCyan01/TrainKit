@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "accelerate>=1.11.0",
     "difpy>=4.2.1",
     "fastapi[standard]>=0.116.2",
     "pillow>=11.3.0",

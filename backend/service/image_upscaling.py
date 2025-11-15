@@ -8,7 +8,7 @@ from tiler import Tiler, Merger
 from config.image_formats import SUPPORTED_OUTPUT_FORMATS, SUPPORTED_INPUT_EXTENSIONS
 
 class ImageUpscaleService:
-    def __init__(self, device, model_path: Path="", load_path: Path="", save_path: Path ="", format:str = "jpg", tile_size: int = 512, tile_overlap:int = 16):
+    def __init__(self, device, model_path: Path, load_path: Path, save_path: Path, format:str = "jpg", tile_size: int = 512, tile_overlap:int = 16):
         self.load_path = load_path
         self.save_path = save_path
         self.format = format
