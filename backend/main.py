@@ -5,8 +5,17 @@ from service.image_rename import RenameService
 from service.image_upscaling import ImageUpscaleService
 from service.image_captioning import ImageCaptioningService
 from utils.image_util import get_device
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:8000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class RenameRequest(BaseModel):
     load_path: str
@@ -51,6 +60,10 @@ def caption(request: CaptionRequest):
     service.caption_image()
     return{"status": "Captioning Complete"}
     
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 @app.get("/device")
 def device():
