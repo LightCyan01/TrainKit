@@ -1,56 +1,73 @@
-import { app, BrowserWindow } from 'electron';
-import path from 'node:path';
-import started from 'electron-squirrel-startup';
+import { app, BrowserWindow, ipcMain } from "electron";
+import path from "node:path";
+import started from "electron-squirrel-startup";
+import { getBackendManager } from "./backend-manager";
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (started) {
-  app.quit();
-}
+if (started) app.quit();
+
+const backendManager = getBackendManager({
+  host: "127.0.0.1",
+  port: 8000,
+  debug: true,
+});
+
+let mainWindow: BrowserWindow | null = null;
 
 const createWindow = () => {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
     },
   });
 
-  // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
     mainWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)
     );
   }
 
-  // Open the DevTools.
   mainWindow.webContents.openDevTools();
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.on('ready', createWindow);
-
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+// IPC handler for backend status
+ipcMain.handle("backend:status", () => {
+  return {
+    status: backendManager.getStatus(),
+    isRunning: backendManager.getStatus() === "running",
+    url: backendManager.getServerUrl(),
+  };
 });
 
-app.on('activate', () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+app.on("ready", () => {
+  createWindow();
+  console.log("Window created - starting backend...");
+
+  // Start backend and notify renderer when ready
+  backendManager.start().then(async () => {
+    const ready = await backendManager.waitForReady();
+    if (ready) {
+      console.log(`Backend ready at: ${backendManager.getServerUrl()}`);
+      mainWindow?.webContents.send("backend:ready");
+    } else {
+      console.error("Backend failed to become ready");
+    }
+  });
 });
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.
+app.on("window-all-closed", async () => {
+  await backendManager.stop();
+  if (process.platform !== "darwin") app.quit();
+});
+
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+
+app.on("before-quit", async () => {
+  await backendManager.stop();
+});
