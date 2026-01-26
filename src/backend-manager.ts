@@ -1,15 +1,14 @@
 import { spawn, ChildProcess } from "child_process";
 import path from "node:path";
 import fs from "node:fs";
-import { app } from "electron";
+import { app, BrowserWindow } from "electron";
+import { getLogger } from "./logger";
 
 export type BackendStatus = "stopped" | "starting" | "running" | "error";
 
 export interface BackendConfig {
   host?: string;
   port?: number;
-  pythonPath?: string;
-  debug?: boolean;
 }
 
 export class BackendManager {
@@ -21,45 +20,81 @@ export class BackendManager {
     this.config = {
       host: config.host ?? "127.0.0.1",
       port: config.port ?? 8000,
-      pythonPath: config.pythonPath ?? "python",
-      debug: config.debug ?? false,
     };
   }
 
   async start(): Promise<void> {
     if (this.process) return;
 
+    const logger = getLogger();
     this.status = "starting";
-    this.log("Starting backend...");
+    logger.info("backend", "Starting backend...");
 
-    const backendPath = path.join(app.getAppPath(), "backend");
+    const isDev = !app.isPackaged;
+    
+    const backendPath = isDev
+      ? path.join(app.getAppPath(), "backend")
+      : path.join(process.resourcesPath, "backend");
+
+    logger.info("backend", `Backend path: ${backendPath}`);
+
+    if (!fs.existsSync(backendPath)) {
+      logger.error("backend", `Backend directory not found: ${backendPath}`);
+      this.status = "error";
+      return;
+    }
+
     const venvPython =
       process.platform === "win32"
         ? path.join(backendPath, ".venv", "Scripts", "python.exe")
         : path.join(backendPath, ".venv", "bin", "python");
 
-    const pythonExe = fs.existsSync(venvPython) ? venvPython : this.config.pythonPath;
-    this.log(`Using Python: ${pythonExe}`);
+    if (!fs.existsSync(venvPython)) {
+      logger.error("backend", `Python venv not found: ${venvPython}`);
+      logger.error("backend", "Did the first-time setup complete successfully?");
+      this.status = "error";
+      return;
+    }
 
-    this.process = spawn(
-      pythonExe,
-      ["-m", "fastapi", "run", "main.py", "--host", this.config.host, "--port", this.config.port.toString()],
-      {
+    const pythonExe = venvPython;
+    logger.info("backend", `Using Python: ${pythonExe}`);
+
+    const args = [
+      "-m",
+      "fastapi",
+      "run",
+      "main.py",
+      "--host",
+      this.config.host,
+      "--port",
+      this.config.port.toString(),
+    ];
+    
+    logger.info("backend", `Command: ${pythonExe} ${args.join(" ")}`);
+
+    try {
+      this.process = spawn(pythonExe, args, {
         cwd: backendPath,
         detached: false,
         stdio: "pipe",
         windowsHide: true,
         env: { ...process.env, PYTHONIOENCODING: "utf-8" },
-      }
-    );
+      });
 
-    this.setupListeners();
+      this.setupListeners();
+      logger.info("backend", `Backend process started with PID: ${this.process.pid}`);
+    } catch (err) {
+      const error = err as Error;
+      logger.error("backend", `Failed to spawn backend process: ${error.message}`);
+      this.status = "error";
+    }
   }
 
   async stop(): Promise<void> {
     if (!this.process) return;
 
-    this.log("Stopping backend...");
+    const logger = getLogger();
+    logger.warning("backend", "Stopping backend...");
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
@@ -70,7 +105,7 @@ export class BackendManager {
         clearTimeout(timeout);
         this.process = null;
         this.status = "stopped";
-        this.log("Backend stopped");
+        logger.info("backend", "Backend stopped");
         resolve();
       });
 
@@ -91,16 +126,19 @@ export class BackendManager {
     }
   }
 
-  async waitForReady(timeoutMs = 30000, intervalMs = 200): Promise<boolean> {
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeoutMs) {
+  async waitForReady(intervalMs = 500): Promise<boolean> {
+    const logger = getLogger();
+    while (this.status === "starting" && this.process !== null) {
       if (await this.checkHealth()) {
         this.status = "running";
+        logger.success("backend", "Backend is ready");
         return true;
       }
       await new Promise((r) => setTimeout(r, intervalMs));
     }
-    this.status = "error";
+    if (this.status === "error") {
+      logger.error("backend", "Backend process exited with error");
+    }
     return false;
   }
 
@@ -118,35 +156,68 @@ export class BackendManager {
 
   private setupListeners(): void {
     if (!this.process) return;
+    const logger = getLogger();
 
     this.process.stdout?.on("data", (data: Buffer) => {
-      const msg = data.toString().trim();
-      if (msg) this.log(`[Backend] ${msg}`);
+      const lines = data.toString().trim().split("\n");
+      for (const line of lines) {
+        if (line.trim()) {
+          logger.info("python", line.trim());
+        }
+      }
     });
 
     this.process.stderr?.on("data", (data: Buffer) => {
-      const msg = data.toString().trim();
-      if (msg) this.log(`[Backend] ${msg}`);
+      const lines = data.toString().trim().split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed) {
+          if (trimmed.includes("ERROR") || trimmed.includes("CRITICAL") || trimmed.includes("Traceback")) {
+            logger.error("python", trimmed);
+          } else if (trimmed.includes("WARNING") || trimmed.includes("WARN")) {
+            logger.warning("python", trimmed);
+          } else {
+            logger.info("python", trimmed);
+          }
+        }
+      }
     });
 
     this.process.on("error", (err) => {
       this.status = "error";
-      console.error("[BackendManager] Process error:", err);
+      logger.error("backend", `Process error: ${err.message}`);
     });
 
     this.process.on("exit", (code, signal) => {
-      this.log(`Exited with code ${code}, signal ${signal}`);
-      this.status = code === 0 || code === null ? "stopped" : "error";
+      if (code === 0 || code === null) {
+        logger.info("backend", `Exited with code ${code}, signal ${signal}`);
+        this.status = "stopped";
+      } else {
+        logger.error("backend", `Exited with code ${code}, signal ${signal}`);
+        this.status = "error";
+      }
       this.process = null;
     });
   }
 
-  private log(msg: string): void {
-    if (this.config.debug) console.log(`[BackendManager] ${msg}`);
+  // Send logs to UI (call after window is ready)
+  static sendLogsToUI(): void {
+    const logger = getLogger();
+    const windows = BrowserWindow.getAllWindows();
+    
+    // Add listener for future logs
+    logger.addListener((entry) => {
+      for (const win of windows) {
+        win.webContents.send("main:log", {
+          level: entry.level,
+          message: entry.message,
+          source: entry.source,
+        });
+      }
+    });
   }
 }
 
-// Singleton
 let instance: BackendManager | null = null;
 
 export function getBackendManager(config?: BackendConfig): BackendManager {

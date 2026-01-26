@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TrainKit</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: #0a0a0a;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        overflow: hidden;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+
+      .container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+        padding-top: 180px;
+        transition: padding-top 0.3s ease;
+      }
+
+      .container.setup-state {
+        padding-top: 40px;
+      }
+
+      .container.error-state {
+        padding-top: 100px;
+      }
+
+      .x-close-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 28px;
+        height: 28px;
+        background: transparent;
+        border: none;
+        color: #52525b;
+        font-size: 18px;
+        cursor: pointer;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        -webkit-app-region: no-drag;
+      }
+
+      .x-close-btn:hover {
+        background: #27272a;
+        color: #fafafa;
+      }
+
+      .x-close-btn.visible {
+        display: flex;
+      }
+
+      .logo-container {
+        position: relative;
+        animation: fadeIn 0.5s ease-out;
+      }
+
+      .logo {
+        width: 80px;
+        height: 80px;
+        color: #f97316;
+        filter: drop-shadow(0 0 20px rgba(249, 115, 22, 0.4));
+      }
+
+      .branding {
+        text-align: center;
+        animation: fadeIn 0.5s ease-out 0.2s both;
+      }
+
+      .title {
+        font-size: 28px;
+        font-weight: 600;
+        letter-spacing: 0.2em;
+        color: #fafafa;
+        margin-bottom: 4px;
+      }
+
+      .subtitle {
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.3em;
+        color: #71717a;
+        text-transform: uppercase;
+      }
+
+      .loader-container {
+        margin-top: 32px;
+        animation: fadeIn 0.5s ease-out 0.4s both;
+      }
+
+      .loader {
+        width: 200px;
+        height: 2px;
+        background: #27272a;
+        border-radius: 2px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .loader::after {
+        content: "";
+        position: absolute;
+        left: -50%;
+        width: 50%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, #f97316, transparent);
+        animation: loading 1.2s ease-in-out infinite;
+      }
+
+      .status {
+        margin-top: 16px;
+        font-size: 11px;
+        color: #52525b;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        animation: fadeIn 0.5s ease-out 0.6s both;
+        max-width: 300px;
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .console-container {
+        margin-top: 16px;
+        width: 350px;
+        height: 150px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease-out;
+      }
+
+      .console-container.visible {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .console {
+        background: #18181b;
+        border: 1px solid #27272a;
+        border-radius: 6px;
+        padding: 12px;
+        font-family: "Consolas", "Monaco", monospace;
+        font-size: 10px;
+        color: #a1a1aa;
+        height: 120px;
+        overflow-y: auto;
+        line-height: 1.5;
+        -webkit-app-region: no-drag;
+        user-select: text;
+        cursor: text;
+      }
+
+      .console::-webkit-scrollbar {
+        width: 4px;
+      }
+
+      .console::-webkit-scrollbar-track {
+        background: #18181b;
+      }
+
+      .console::-webkit-scrollbar-thumb {
+        background: #3f3f46;
+        border-radius: 2px;
+      }
+
+      .console-line {
+        white-space: pre-wrap;
+        word-break: break-all;
+        user-select: text;
+      }
+
+      .console-line.success {
+        color: #22c55e;
+      }
+
+      .console-line.error {
+        color: #ef4444;
+      }
+
+      .console-line.info {
+        color: #f97316;
+      }
+
+      .close-btn {
+        display: none;
+        margin-top: 20px;
+        padding: 10px 24px;
+        background: #27272a;
+        border: 1px solid #3f3f46;
+        border-radius: 6px;
+        color: #fafafa;
+        font-size: 12px;
+        cursor: pointer;
+        transition: background 0.2s;
+        -webkit-app-region: no-drag;
+      }
+
+      .close-btn:hover {
+        background: #3f3f46;
+      }
+
+      .close-btn.visible {
+        display: block;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes loading {
+        0% {
+          left: -50%;
+        }
+        100% {
+          left: 100%;
+        }
+      }
+
+      .glow {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 120px;
+        height: 120px;
+        background: radial-gradient(
+          circle,
+          rgba(249, 115, 22, 0.15) 0%,
+          transparent 70%
+        );
+        border-radius: 50%;
+        animation: pulse 2s ease-in-out infinite;
+        z-index: -1;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: translate(-50%, -50%) scale(1);
+          opacity: 0.6;
+        }
+        50% {
+          transform: translate(-50%, -50%) scale(1.1);
+          opacity: 1;
+        }
+      }
+
+      .hex-outer {
+        stroke-dasharray: 30 30;
+        stroke-dashoffset: 0;
+        animation: hexSpinOuter 2s linear infinite;
+      }
+
+      .hex-inner {
+        stroke-dasharray: 23 23;
+        stroke-dashoffset: 0;
+        animation: hexSpinInner 1.5s linear infinite;
+        opacity: 0.8;
+      }
+
+      @keyframes hexSpinOuter {
+        0% {
+          stroke-dashoffset: 0;
+        }
+        100% {
+          stroke-dashoffset: -60;
+        }
+      }
+
+      @keyframes hexSpinInner {
+        0% {
+          stroke-dashoffset: 0;
+        }
+        100% {
+          stroke-dashoffset: 46;
+        }
+      }
+
+      .hex-core {
+        animation: corePulse 1.5s ease-in-out infinite;
+      }
+
+      @keyframes corePulse {
+        0%,
+        100% {
+          opacity: 1;
+          filter: drop-shadow(0 0 2px #f97316);
+        }
+        50% {
+          opacity: 0.7;
+          filter: drop-shadow(0 0 6px #f97316);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <button class="x-close-btn" id="xCloseBtn">×</button>
+    <div class="container" id="container">
+      <div class="logo-container">
+        <div class="glow"></div>
+        <svg
+          viewBox="0 0 48 48"
+          class="logo"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <path class="hex-outer" d="M24 4L42 14V34L24 44L6 34V14L24 4Z" />
+          <path class="hex-inner" d="M24 12L34 18V30L24 36L14 30V18L24 12Z" />
+          <circle class="hex-core" cx="24" cy="24" r="4" fill="currentColor" />
+          <g opacity="0.6">
+            <line x1="24" y1="20" x2="24" y2="12" stroke-width="1" />
+            <line x1="27.5" y1="22" x2="34" y2="18" stroke-width="1" />
+            <line x1="27.5" y1="26" x2="34" y2="30" stroke-width="1" />
+            <line x1="24" y1="28" x2="24" y2="36" stroke-width="1" />
+            <line x1="20.5" y1="26" x2="14" y2="30" stroke-width="1" />
+            <line x1="20.5" y1="22" x2="14" y2="18" stroke-width="1" />
+          </g>
+        </svg>
+      </div>
+
+      <div class="branding">
+        <h1 class="title">TRAINKIT</h1>
+        <p class="subtitle">Image Processing Terminal</p>
+      </div>
+
+      <div class="loader-container">
+        <div class="loader"></div>
+        <p class="status" id="status">Initializing...</p>
+      </div>
+
+      <div class="console-container" id="consoleContainer">
+        <div class="console" id="console"></div>
+      </div>
+
+      <button class="close-btn" id="closeBtn">Close</button>
+    </div>
+
+    <script>
+      const consoleEl = document.getElementById("console");
+      const consoleContainer = document.getElementById("consoleContainer");
+      const statusEl = document.getElementById("status");
+      const container = document.getElementById("container");
+
+      function addConsoleLine(message, type = "default") {
+        const line = document.createElement("div");
+        line.className = `console-line ${type}`;
+        line.textContent = message;
+        consoleEl.appendChild(line);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+
+      function showConsole() {
+        consoleContainer.classList.add("visible");
+        container.classList.add("setup-state");
+      }
+
+      function showErrorState() {
+        container.classList.add("error-state");
+        document.getElementById("xCloseBtn").classList.add("visible");
+        document.getElementById("closeBtn").classList.add("visible");
+      }
+
+      if (window.electronAPI) {
+        const closeBtn = document.getElementById("closeBtn");
+        const xCloseBtn = document.getElementById("xCloseBtn");
+
+        closeBtn.addEventListener("click", () => {
+          window.electronAPI.windowClose();
+        });
+
+        xCloseBtn.addEventListener("click", () => {
+          window.electronAPI.windowClose();
+        });
+
+        window.electronAPI.onSplashStatus((status) => {
+          statusEl.textContent = status;
+          if (status.toLowerCase().includes("failed")) {
+            showErrorState();
+          }
+        });
+
+        window.electronAPI.onSetupMode(() => {
+          container.classList.add("setup-state");
+          showConsole();
+        });
+
+        window.electronAPI.onSetupLog((data) => {
+          showConsole();
+          addConsoleLine(data.message, data.type || "default");
+        });
+
+        window.electronAPI.onSetupProgress((data) => {
+          if (data.message.length < 60 && !data.message.includes('UV_LINK')) {
+            statusEl.textContent = data.message;
+          }
+          if (data.status === "error") {
+            showErrorState();
+          }
+          if (data.status === "installing" || data.status === "downloading" || data.status === "error" || data.status === "complete") {
+            showConsole();
+            const type = data.status === "error" ? "error" :
+                         data.status === "complete" ? "success" : "default";
+            addConsoleLine(data.message, type);
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

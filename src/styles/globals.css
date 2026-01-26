@@ -1,0 +1,232 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* dark theme */
+  --background: oklch(0.12 0.01 250);
+  --foreground: oklch(0.95 0 0);
+  --card: oklch(0.15 0.01 250);
+  --card-foreground: oklch(0.95 0 0);
+  --popover: oklch(0.13 0.01 250);
+  --popover-foreground: oklch(0.95 0 0);
+  /* Orange primary colors */
+  --primary: oklch(0.7 0.18 45);
+  --primary-foreground: oklch(0.12 0.01 250);
+  --secondary: oklch(0.2 0.01 250);
+  --secondary-foreground: oklch(0.9 0 0);
+  --muted: oklch(0.22 0.01 250);
+  --muted-foreground: oklch(0.65 0 0);
+  /* Cyan accent */
+  --accent: oklch(0.7 0.15 195);
+  --accent-foreground: oklch(0.12 0.01 250);
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.95 0 0);
+  --success: oklch(0.65 0.2 145);
+  --border: oklch(0.28 0.02 250);
+  --input: oklch(0.18 0.01 250);
+  --ring: oklch(0.7 0.18 45);
+  --radius: 0;
+
+  /* custom colors */
+  --dark: oklch(0.1 0.01 250);
+  --orange: oklch(0.7 0.18 45);
+  --cyan: oklch(0.7 0.15 195);
+}
+
+/* Light theme override */
+.light {
+  --background: oklch(0.97 0 0);
+  --foreground: oklch(0.15 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0 0);
+  --primary: oklch(0.55 0.2 45);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.93 0 0);
+  --secondary-foreground: oklch(0.2 0 0);
+  --muted: oklch(0.92 0 0);
+  --muted-foreground: oklch(0.45 0 0);
+  --accent: oklch(0.5 0.15 195);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: oklch(0.55 0.25 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --success: oklch(0.5 0.2 145);
+  --border: oklch(0.85 0 0);
+  --input: oklch(0.97 0 0);
+  --ring: oklch(0.55 0.2 45);
+
+  /* colors for light theme */
+  --dark: oklch(0.95 0 0);
+  --orange: oklch(0.55 0.2 45);
+  --cyan: oklch(0.5 0.15 195);
+}
+
+@theme inline {
+  --font-sans:
+    "Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto", sans-serif;
+  --font-mono: "Consolas", "Courier New", monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-dark: var(--dark);
+  --color-orange: var(--orange);
+  --color-cyan: var(--cyan);
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+
+  /* Dark scrollbars */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: oklch(0.12 0.01 250);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: oklch(0.28 0.02 250);
+    border-radius: 0;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.35 0.02 250);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: oklch(0.12 0.01 250);
+  }
+}
+
+/* Button Components */
+@layer components {
+  /* Panel with corner brackets */
+  .panel {
+    @apply relative bg-card/50 border border-border;
+  }
+
+  .panel::before,
+  .panel::after {
+    content: "";
+    @apply absolute w-4 h-4 border-primary;
+  }
+
+  .panel::before {
+    @apply top-0 left-0 border-t-2 border-l-2;
+  }
+
+  .panel::after {
+    @apply top-0 right-0 border-t-2 border-r-2;
+  }
+
+  .panel-bottom::before {
+    @apply bottom-0 left-0 top-auto border-t-0 border-b-2;
+  }
+
+  .panel-bottom::after {
+    @apply bottom-0 right-0 top-auto border-t-0 border-b-2;
+  }
+
+  /* Button with clipped corners */
+  .btn-clipped {
+    clip-path: polygon(
+      8px 0%,
+      100% 0%,
+      100% calc(100% - 8px),
+      calc(100% - 8px) 100%,
+      0% 100%,
+      0% 8px
+    );
+  }
+
+  /* Glow pulse animation */
+  .glow-pulse {
+    animation: glow-pulse 2s ease-in-out infinite;
+  }
+
+  /* Status indicator pulse */
+  .status-online {
+    animation: status-pulse 2s ease-in-out infinite;
+  }
+
+  /* Sweep highlight for progress bars */
+  .sweep-highlight::after {
+    content: "";
+    @apply absolute inset-y-0 w-1/4;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.2),
+      transparent
+    );
+    animation: sweep 1.5s ease-in-out infinite;
+  }
+}
+
+@layer utilities {
+  .animate-sweep {
+    animation: sweep 0.5s ease-out;
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 15px rgba(255, 140, 50, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(255, 140, 50, 0.5);
+  }
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 8px currentColor;
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 4px currentColor;
+  }
+}
+
+@keyframes sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}

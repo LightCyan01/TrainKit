@@ -1,4 +1,18 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from "vite";
+import { resolve } from "path";
+import fs from "fs";
 
-// https://vitejs.dev/config
-export default defineConfig({});
+const copySplashPlugin = () => ({
+  name: "copy-splash",
+  closeBundle() {
+    const src = resolve(__dirname, "src/splash.html");
+    const dest = resolve(__dirname, ".vite/build/splash.html");
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, dest);
+    }
+  },
+});
+
+export default defineConfig({
+  plugins: [copySplashPlugin()],
+});

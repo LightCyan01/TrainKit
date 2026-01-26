@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          uv sync
+        shell: pwsh
+
+      - name: Get version
+        id: get_version
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build and package
+        run: npm run make
+
+      - name: Zip installer folder
+        run: |
+          Compress-Archive -Path "out/make/squirrel.windows/x64/*" -DestinationPath "out/TrainKit-Windows-Installer.zip"
+        shell: pwsh
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: TrainKit ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            out/TrainKit-Windows-Installer.zip
+            out/make/zip/win32/x64/TrainKit-win32-x64-${{ steps.get_version.outputs.version }}.zip
+          body: |
+            ## TrainKit ${{ github.ref_name }}
+
+            ### Downloads
+            - **TrainKit-Windows-Installer.zip** - Windows installer (extract, run Setup.exe)
+            - **TrainKit-win32-x64-${{ steps.get_version.outputs.version }}.zip** - Portable version (extract, run TrainKit.exe)
+
+            ### Requirements
+            - [uv](https://docs.astral.sh/uv/) must be installed for first-time setup
+            - Python 3.12 will be automatically downloaded during setup
