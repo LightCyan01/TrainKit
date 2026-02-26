@@ -35,7 +35,7 @@ const createSplashWindow = () => {
     frame: false,
     transparent: false,
     resizable: false,
-    skipTaskbar: true,
+    skipTaskbar: false,
     alwaysOnTop: true,
     backgroundColor: "#0a0a0a",
     show: false,
@@ -142,6 +142,17 @@ ipcMain.handle("shell:openExternal", async (_event, url: string) => {
   await shell.openExternal(url);
 });
 
+// IPC: Open log file in default text editor
+ipcMain.handle("log:openFile", async () => {
+  const logger = getLogger();
+  await shell.openPath(logger.getLogFilePath());
+});
+
+// IPC: Get log file path
+ipcMain.handle("log:getPath", () => {
+  return getLogger().getLogFilePath();
+});
+
 // IPC: Open directory picker
 ipcMain.handle("dialog:openDirectory", async () => {
   const result = await dialog.showOpenDialog({
@@ -246,14 +257,7 @@ ipcMain.handle(
 );
 
 // IPC: List images in a directory
-const IMAGE_EXTENSIONS = [
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".webp",
-  ".gif",
-  ".bmp",
-];
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"];
 
 const MIME_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -310,8 +314,16 @@ app.on("ready", async () => {
     splashWindow?.webContents.send("setup:mode");
     updateSplashStatus("First-time setup...");
 
+    const setupLogger = getLogger();
     const setupSuccess = await setupManager.runSetup((progress) => {
       sendSetupProgress(progress);
+      const logLevel =
+        progress.status === "error"
+          ? "error"
+          : progress.status === "complete"
+            ? "success"
+            : "info";
+      if (progress.message) setupLogger[logLevel]("setup", progress.message);
     });
 
     if (!setupSuccess) {
@@ -335,7 +347,10 @@ app.on("ready", async () => {
       setTimeout(() => {
         BackendManager.sendLogsToUI();
         const logger = getLogger();
-        logger.success("main", `Backend ready at: ${backendManager.getServerUrl()}`);
+        logger.success(
+          "main",
+          `Backend ready at: ${backendManager.getServerUrl()}`,
+        );
         mainWindow?.webContents.send("backend:ready");
       }, 600);
     } else {

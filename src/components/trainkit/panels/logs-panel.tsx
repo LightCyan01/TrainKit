@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   ChevronDown,
   Search,
+  FolderOpen,
 } from "lucide-react";
 
 type LogLevel = "info" | "success" | "warning" | "error";
@@ -228,6 +229,16 @@ export function LogsPanel({ isBackendOnline }: LogsPanelProps) {
               >
                 <Download className="h-3 w-3" />
                 Export
+              </button>
+
+              <button
+                onClick={() => window.electronAPI?.openLogFile()}
+                title="Open the persistent log file in your default text editor"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border 
+                text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              >
+                <FolderOpen className="h-3 w-3" />
+                Log File
               </button>
 
               <button

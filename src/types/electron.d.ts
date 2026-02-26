@@ -13,17 +13,17 @@ export interface ElectronAPI {
   }>;
   onBackendReady: (callback: () => void) => () => void;
   onMainLog: (
-    callback: (log: {
-      level: string;
-      message: string;
-      source: string;
-    }) => void,
+    callback: (log: { level: string; message: string; source: string }) => void,
   ) => () => void;
 
   // Splash/Setup
   onSplashStatus: (callback: (status: string) => void) => () => void;
   onSetupProgress: (
-    callback: (data: { status: string; message: string; progress?: number }) => void,
+    callback: (data: {
+      status: string;
+      message: string;
+      progress?: number;
+    }) => void,
   ) => () => void;
   onSetupLog: (
     callback: (data: { message: string; type?: string }) => void,
@@ -48,6 +48,10 @@ export interface ElectronAPI {
 
   // Shell
   openExternal: (url: string) => Promise<void>;
+
+  // Log file
+  openLogFile: () => Promise<void>;
+  getLogFilePath: () => Promise<string>;
 }
 
 declare global {

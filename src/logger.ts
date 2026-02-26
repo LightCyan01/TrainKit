@@ -19,18 +19,21 @@ class Logger {
   private listeners: Array<(entry: LogEntry) => void> = [];
 
   constructor() {
-    // Create logs folder in user data directory
-    this.logDir = path.join(app.getPath("userData"), "logs");
-    
+    // Create logs folder in the app directory (next to exe when packaged, project root in dev)
+    const appDir = app.isPackaged
+      ? path.dirname(process.execPath)
+      : app.getAppPath();
+    this.logDir = path.join(appDir, "logs");
+
     // Generate session ID with timestamp
     const now = new Date();
     this.sessionId = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
     this.logFile = path.join(this.logDir, `session-${this.sessionId}.log`);
-    
+
     this.ensureLogDir();
     this.initWriteStream();
     this.cleanOldLogs();
-    
+
     this.info("logger", `Log file: ${this.logFile}`);
   }
 
@@ -53,11 +56,12 @@ class Logger {
 
   private cleanOldLogs(): void {
     try {
-      const files = fs.readdirSync(this.logDir)
-        .filter(f => f.startsWith("session-") && f.endsWith(".log"))
+      const files = fs
+        .readdirSync(this.logDir)
+        .filter((f) => f.startsWith("session-") && f.endsWith(".log"))
         .sort()
         .reverse();
-      
+
       for (let i = 10; i < files.length; i++) {
         fs.unlinkSync(path.join(this.logDir, files[i]));
       }
@@ -83,9 +87,9 @@ class Logger {
     };
 
     const line = this.formatLogLine(entry);
-    
+
     console.log(line);
-    
+
     if (this.writeStream) {
       this.writeStream.write(line + "\n");
     }

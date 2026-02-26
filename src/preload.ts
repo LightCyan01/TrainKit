@@ -42,7 +42,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Setup progress
   onSetupProgress: (
-    callback: (data: { status: string; message: string; progress?: number }) => void,
+    callback: (data: {
+      status: string;
+      message: string;
+      progress?: number;
+    }) => void,
   ) => {
     const handler = (
       _event: unknown,
@@ -88,4 +92,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // External links
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke("shell:openExternal", url),
+
+  // Log file
+  openLogFile: (): Promise<void> => ipcRenderer.invoke("log:openFile"),
+  getLogFilePath: (): Promise<string> => ipcRenderer.invoke("log:getPath"),
 });
