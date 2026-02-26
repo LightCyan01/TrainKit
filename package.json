@@ -1,7 +1,7 @@
 {
   "name": "trainkit",
   "productName": "TrainKit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A dataset preparation toolkit for AI image training",
   "main": ".vite/build/main.js",
   "scripts": {
