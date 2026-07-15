@@ -118,6 +118,7 @@ TrainKit 1.2.0 completes the original processing roadmap, adds resumable and col
 - Added Content Security Policy headers to the main and splash renderers.
 - Restricted model file selection to supported safe extensions.
 - Added preview byte limits and backend image decode limits.
+- Removed an unused canonical model path from status responses so untrusted request data is not unnecessarily resolved or echoed.
 - Made release signing fail closed when certificate secrets are absent.
 - Added SHA-256 release checksums and GitHub build-provenance attestations.
 - Resolved all currently reported npm audit vulnerabilities.
@@ -125,7 +126,7 @@ TrainKit 1.2.0 completes the original processing roadmap, adds resumable and col
 ### Verification
 
 - 6 frontend tests across API, contract, and packaged-path behavior.
-- 19 backend tests covering authentication, validation, jobs, cancellation, manifests, path safety, caption adapters, NCNN, and end-to-end upscaling.
+- 20 backend tests covering authentication, validation, jobs, cancellation, manifests, path safety, caption adapters, NCNN, and end-to-end upscaling.
 - Real minimal NCNN graph inference test.
 - Packaged executable smoke test covering setup, authenticated health, and WebSocket readiness.
 - Packaged backend health became ready in approximately 0.85 seconds; the full desktop smoke test reported ready in 14.5 seconds including setup migration.

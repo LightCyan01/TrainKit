@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from main import app
+from service.service_manager import ServiceManager
 
 
 def test_health_requires_launch_token():
@@ -26,3 +27,32 @@ def test_request_validation_uses_error_envelope():
         response = client.post("/rename", json={}, headers={"x-trainkit-token": "test-token"})
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_model_status_does_not_echo_user_path(monkeypatch, tmp_path):
+    services = ServiceManager.get_instance()
+    monkeypatch.setattr(services, "is_caption_model_loaded", lambda *_args: False)
+    monkeypatch.setattr(
+        services,
+        "get_gpu_memory_usage",
+        lambda: {
+            "gpu_memory_allocated_gb": 0,
+            "gpu_memory_reserved_gb": 0,
+            "gpu_memory_total_gb": 0,
+        },
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/model-status",
+            json={"model_path": str(tmp_path), "adapter": "auto"},
+            headers={"x-trainkit-token": "test-token"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "is_loaded": False,
+        "gpu_memory_allocated_gb": 0,
+        "gpu_memory_reserved_gb": 0,
+        "gpu_memory_total_gb": 0,
+    }

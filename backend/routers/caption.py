@@ -52,7 +52,6 @@ async def model_status(
 ):
     return {
         "is_loaded": services.is_caption_model_loaded(Path(request.model_path), request.adapter),
-        "model_path": str(Path(request.model_path).resolve()),
         **services.get_gpu_memory_usage(),
     }
 
