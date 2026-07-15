@@ -147,7 +147,7 @@ export const ImagePreview = memo(function ImagePreview({
       >
         <div className="flex flex-col items-center gap-2 text-muted-foreground">
           <ImageIcon className="h-12 w-12 opacity-30" />
-          <span className="text-xs">Select a directory to preview images</span>
+          <span className="text-xs">Select an image or folder to preview</span>
         </div>
       </div>
     );
@@ -189,7 +189,7 @@ export const ImagePreview = memo(function ImagePreview({
       >
         <div className="flex flex-col items-center gap-2 text-muted-foreground">
           <ImageIcon className="h-12 w-12 opacity-30" />
-          <span className="text-xs">No images found in directory</span>
+          <span className="text-xs">No supported images found</span>
         </div>
       </div>
     );

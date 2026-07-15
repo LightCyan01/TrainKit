@@ -9,7 +9,7 @@ flowchart LR
     M -->|"token-authenticated HTTP"| B["FastAPI backend on ephemeral loopback port"]
     B --> J["single-active-job manager"]
     J --> S["caption / upscale / rename / tag services"]
-    S --> F["atomic outputs + resumable manifests"]
+    S --> F["atomic outputs + optional resumable manifests"]
     B -->|"authenticated WebSocket events"| M
     M -->|"validated job/log events"| R
 ```
@@ -22,7 +22,7 @@ flowchart LR
 
 `src/runtime-paths.ts` is the single authority for packaged paths. `src/setup-manager.ts` installs the locked Python environment beside the packaged backend under `resources/backend`, including its managed Python interpreter. uv's cache and temporary directory also stay there during setup and are removed after success. A marker binds the environment to the desktop version and `uv.lock` SHA-256. Session logs are stored under `logs` beside the executable.
 
-Because the packaged runtime is self-contained, TrainKit must be extracted or installed in a folder the current user can write to. Setup checks this before downloading multi-gigabyte dependencies and reports the exact rejected path.
+Because the packaged runtime is self-contained, TrainKit must be extracted to a folder the current user can write to. Setup checks this before downloading multi-gigabyte dependencies and reports the exact rejected path.
 
 ## Backend boundary
 
@@ -34,9 +34,9 @@ Because the packaged runtime is self-contained, TrainKit must be extracted or in
 
 ## Data pipeline
 
-Every operation enumerates verified images in deterministic natural order and creates a schema-versioned manifest before processing. Collision policy is resolved before the first output. Writes use a temporary file in the destination directory followed by atomic replacement.
+Every operation accepts one verified image or enumerates a selected folder in deterministic natural order. It creates an in-memory execution plan and resolves collision policy before the first output. The plan is persisted as a schema-versioned manifest only when requested, for dry runs, or while resuming an existing manifest. Writes use a temporary file in the destination directory followed by atomic replacement.
 
-Resume accepts only a matching operation and identical input/output roots. Completed and skipped items remain terminal; failed items return to pending. Every source and destination is resolved and checked against the request roots, including paired tagging outputs.
+Resume accepts only a matching operation and identical input/output paths. Completed and skipped items remain terminal; failed items return to pending. Every source and destination is resolved and checked against the selected input and output directory, including paired tagging outputs.
 
 Image safety defaults are 128 MiB per encoded file and 100 million decoded pixels. Supported input extensions are PNG, JPEG, BMP, and WebP.
 

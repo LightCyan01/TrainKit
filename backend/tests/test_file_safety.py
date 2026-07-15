@@ -20,3 +20,10 @@ def test_image_listing_is_natural_and_atomic_outputs_replace(tmp_path: Path):
     atomic_save_image(Image.new("RGB", (3, 3), "blue"), copied, "PNG")
     with Image.open(copied) as image:
         assert image.size == (3, 3)
+
+
+def test_image_listing_accepts_an_individual_image(tmp_path: Path):
+    source = tmp_path / "single.webp"
+    Image.new("RGB", (2, 2), "green").save(source)
+
+    assert list_images(source) == [source]

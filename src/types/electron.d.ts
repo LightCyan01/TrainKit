@@ -57,7 +57,7 @@ export interface ElectronAPI {
   isValidModelFolder: (
     path: string,
   ) => Promise<{ valid: boolean; name?: string }>;
-  listImages: (directoryPath: string) => Promise<string[]>;
+  listImages: (sourcePath: string) => Promise<string[]>;
   readImageAsDataUrl: (imagePath: string) => Promise<string | null>;
   openExternal: (url: string) => Promise<void>;
   openLogFile: () => Promise<void>;

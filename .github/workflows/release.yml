@@ -22,7 +22,6 @@ jobs:
       id-token: write
     env:
       RELEASE_TAG: ${{ github.ref_name }}
-      WINDOWS_CERTIFICATE_FILE: ${{ runner.temp }}/trainkit-signing.pfx
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
     steps:
@@ -46,7 +45,7 @@ jobs:
         with:
           enable-cache: false
 
-      - name: Validate tag and signing configuration
+      - name: Validate tag and configure optional signing
         id: metadata
         env:
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
@@ -56,16 +55,22 @@ jobs:
           if ($env:RELEASE_TAG -ne "v$version") {
             throw "Tag $env:RELEASE_TAG does not match package version v$version"
           }
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
-            throw "WINDOWS_CERTIFICATE_BASE64 is required for release signing"
+          $hasCertificate = ![string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)
+          $hasPassword = ![string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)
+          if ($hasCertificate -ne $hasPassword) {
+            throw "WINDOWS_CERTIFICATE_BASE64 and WINDOWS_CERTIFICATE_PASSWORD must be configured together"
           }
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
-            throw "WINDOWS_CERTIFICATE_PASSWORD is required for release signing"
+          if ($hasCertificate) {
+            $certificateFile = Join-Path $env:RUNNER_TEMP "trainkit-signing.pfx"
+            [IO.File]::WriteAllBytes(
+              $certificateFile,
+              [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
+            )
+            "WINDOWS_CERTIFICATE_FILE=$certificateFile" >> $env:GITHUB_ENV
+            "signed=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "signed=false" >> $env:GITHUB_OUTPUT
           }
-          [IO.File]::WriteAllBytes(
-            $env:WINDOWS_CERTIFICATE_FILE,
-            [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
-          )
           "version=$version" >> $env:GITHUB_ENV
           "version=$version" >> $env:GITHUB_OUTPUT
 
@@ -78,40 +83,30 @@ jobs:
       - name: Verify source
         run: npm run verify
 
-      - name: Build signed Windows artifacts
+      - name: Build Windows ZIP
         run: npm run make
 
       - name: Verify packaged layout
         run: npm run verify:package
 
       - name: Verify Authenticode signatures
+        if: steps.metadata.outputs.signed == 'true'
         shell: pwsh
         run: |
-          $targets = @(
-            "out/TrainKit-win32-x64/TrainKit.exe"
-            Get-ChildItem "out/make/squirrel.windows/x64" -Filter "*.exe" |
-              Select-Object -ExpandProperty FullName
-          )
-          if ($targets.Count -lt 2) {
-            throw "Expected the application and installer executables"
-          }
-          foreach ($target in $targets) {
-            $signature = Get-AuthenticodeSignature $target
-            if ($signature.Status -ne "Valid") {
-              throw "Invalid Authenticode signature for ${target}: $($signature.Status)"
-            }
+          $target = "out/TrainKit-win32-x64/TrainKit.exe"
+          $signature = Get-AuthenticodeSignature $target
+          if ($signature.Status -ne "Valid") {
+            throw "Invalid Authenticode signature for ${target}: $($signature.Status)"
           }
 
       - name: Prepare release artifacts and checksums
         shell: pwsh
         run: |
-          $installer = "out/TrainKit-Windows-Installer-$env:version.zip"
-          Compress-Archive -Path "out/make/squirrel.windows/x64/*" -DestinationPath $installer -Force
-          $portable = "out/make/zip/win32/x64/TrainKit-win32-x64-$env:version.zip"
-          if (!(Test-Path $portable)) {
-            throw "Portable archive was not produced: $portable"
+          $archive = "out/make/zip/win32/x64/TrainKit-win32-x64-$env:version.zip"
+          if (!(Test-Path $archive)) {
+            throw "Windows archive was not produced: $archive"
           }
-          @($installer, $portable) | ForEach-Object {
+          @($archive) | ForEach-Object {
             $hash = (Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $(Split-Path $_ -Leaf)"
           } | Set-Content "out/SHA256SUMS.txt" -Encoding utf8
@@ -128,19 +123,31 @@ jobs:
           if (!$match.Success) {
             throw "CHANGELOG.md does not contain a section for $env:version"
           }
-          $provenance = @"
+          if ('${{ steps.metadata.outputs.signed }}' -eq 'true') {
+            $releaseNotice = @"
           ---
 
-          Windows artifacts are Authenticode-signed and accompanied by SHA-256 checksums and a GitHub build-provenance attestation.
+          The Windows executable is Authenticode-signed. The ZIP is accompanied by a SHA-256 checksum and GitHub build-provenance attestation.
           "@
-          "$($match.Value.Trim())`n`n$($provenance.Trim())" |
+          } else {
+            $releaseNotice = @'
+          ---
+
+          > [!WARNING]
+          > This release is currently unsigned. Windows SmartScreen or antivirus software may display a warning or false-positive detection. Download only from this GitHub release and verify the ZIP against `SHA256SUMS.txt` before running it.
+
+          Download the Windows ZIP, extract the entire archive to a writable folder on the drive where you want TrainKit stored, then run `TrainKit.exe`. The ZIP is the standard Windows distribution; there is no installer.
+
+          The ZIP is accompanied by a SHA-256 checksum and GitHub build-provenance attestation.
+          '@
+          }
+          "$($match.Value.Trim())`n`n$($releaseNotice.Trim())" |
             Set-Content "out/RELEASE_NOTES.md" -Encoding utf8
 
       - name: Attest release provenance
         uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with:
           subject-path: |
-            out/TrainKit-Windows-Installer-${{ steps.metadata.outputs.version }}.zip
             out/make/zip/win32/x64/TrainKit-win32-x64-${{ steps.metadata.outputs.version }}.zip
             out/SHA256SUMS.txt
 
@@ -150,7 +157,6 @@ jobs:
         shell: pwsh
         run: |
           gh release create $env:RELEASE_TAG `
-            "out/TrainKit-Windows-Installer-$env:version.zip" `
             "out/make/zip/win32/x64/TrainKit-win32-x64-$env:version.zip" `
             "out/SHA256SUMS.txt" `
             --verify-tag `
@@ -160,4 +166,7 @@ jobs:
       - name: Remove signing certificate
         if: always()
         shell: pwsh
-        run: Remove-Item -LiteralPath $env:WINDOWS_CERTIFICATE_FILE -Force -ErrorAction SilentlyContinue
+        run: |
+          if (![string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_FILE)) {
+            Remove-Item -LiteralPath $env:WINDOWS_CERTIFICATE_FILE -Force -ErrorAction SilentlyContinue
+          }

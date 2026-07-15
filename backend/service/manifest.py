@@ -66,14 +66,12 @@ class BatchManifest(BaseModel):
         load_root = load_path.resolve()
         save_root = save_path.resolve()
         if _path_key(Path(self.load_path)) != _path_key(load_root):
-            raise InvalidPathError("Manifest input directory does not match this request")
+            raise InvalidPathError("Manifest input path does not match this request")
         if _path_key(Path(self.save_path)) != _path_key(save_root):
             raise InvalidPathError("Manifest output directory does not match this request")
         for item in self.items:
             if not _is_within(Path(item.source), load_root):
-                raise InvalidPathError(
-                    f"Manifest source escapes the input directory: {item.source}"
-                )
+                raise InvalidPathError(f"Manifest source escapes the selected input: {item.source}")
             if not _is_within(Path(item.destination), save_root):
                 raise InvalidPathError(
                     f"Manifest destination escapes the output directory: {item.destination}"
@@ -175,8 +173,8 @@ def build_manifest(
     destination_for: Callable[[Path, int], Path],
     collision_policy: str,
 ) -> BatchManifest:
-    if not load_path.is_dir():
-        raise InvalidPathError(f"Input directory does not exist: {load_path}")
+    if not load_path.is_dir() and not load_path.is_file():
+        raise InvalidPathError(f"Input image or directory does not exist: {load_path}")
     save_path.mkdir(parents=True, exist_ok=True)
     reserved: set[str] = set()
     items: list[ManifestItem] = []
@@ -186,7 +184,7 @@ def build_manifest(
     for index, source in enumerate(ordered_sources, start=1):
         destination = destination_for(source, index)
         if not _is_within(source, load_path):
-            raise InvalidPathError(f"Source escapes the input directory: {source}")
+            raise InvalidPathError(f"Source escapes the selected input: {source}")
         if not _is_within(destination, save_path):
             raise InvalidPathError(f"Destination escapes the output directory: {destination}")
         source_key = _path_key(source)

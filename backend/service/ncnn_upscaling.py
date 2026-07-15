@@ -17,8 +17,8 @@ class NCNNUpscaleService:
         self,
         model_param_path: Path,
         model_bin_path: Path | None,
-        input_blob: str,
-        output_blob: str,
+        input_blob: str | None,
+        output_blob: str | None,
         scale: int,
         use_vulkan: bool,
         tile_size: int = 512,
@@ -28,8 +28,14 @@ class NCNNUpscaleService:
         self.model_bin_path = (
             model_bin_path.resolve() if model_bin_path else self.model_path.with_suffix(".bin")
         )
-        self.input_blob = input_blob
-        self.output_blob = output_blob
+        self.input_blob_override = input_blob.strip() if input_blob and input_blob.strip() else None
+        self.output_blob_override = (
+            output_blob.strip() if output_blob and output_blob.strip() else None
+        )
+        self.input_blob = ""
+        self.output_blob = ""
+        self.input_blobs: list[str] = []
+        self.output_blobs: list[str] = []
         self.scale = scale
         self.use_vulkan = use_vulkan
         self.tile_size = tile_size
@@ -51,11 +57,37 @@ class NCNNUpscaleService:
                 raise RuntimeError("load_param returned an error")
             if self.net.load_model(str(self.model_bin_path)) != 0:
                 raise RuntimeError("load_model returned an error")
+            self.input_blobs = list(self.net.input_names())
+            self.output_blobs = list(self.net.output_names())
+            self.input_blob = self._resolve_blob(
+                self.input_blob_override, self.input_blobs, "input"
+            )
+            self.output_blob = self._resolve_blob(
+                self.output_blob_override, self.output_blobs, "output"
+            )
         except Exception as exc:
             raise ModelLoadError(f"Could not load NCNN model: {exc}") from exc
 
+    @staticmethod
+    def _resolve_blob(override: str | None, available: list[str], kind: str) -> str:
+        if override:
+            if override not in available:
+                names = ", ".join(available) or "none"
+                raise RuntimeError(
+                    f"NCNN {kind} blob '{override}' was not found. Available: {names}"
+                )
+            return override
+        if len(available) == 1:
+            return available[0]
+        if not available:
+            raise RuntimeError(f"NCNN graph does not expose an {kind} blob")
+        names = ", ".join(available)
+        raise RuntimeError(
+            f"NCNN graph exposes multiple {kind} blobs ({names}); choose one explicitly"
+        )
+
     @property
-    def info(self) -> dict[str, str | int | bool]:
+    def info(self) -> dict[str, str | int | bool | list[str]]:
         return {
             "backend": self.backend_name,
             "scale": self.scale,
@@ -65,6 +97,8 @@ class NCNNUpscaleService:
             "vulkan": self.use_vulkan,
             "input_blob": self.input_blob,
             "output_blob": self.output_blob,
+            "input_blobs": self.input_blobs,
+            "output_blobs": self.output_blobs,
         }
 
     def _process_tile(self, image: Image.Image) -> Image.Image:

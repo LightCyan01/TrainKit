@@ -46,7 +46,7 @@ User-visible changes must update `CHANGELOG.md` under the target version. The re
 
 ## Maintainer release setup
 
-Tagged releases are fail-closed and must match `package.json` exactly (for example, version `1.1.0` requires tag `v1.1.0`). Configure these GitHub Actions secrets:
+Tagged releases must match `package.json` exactly (for example, version `1.2.1` requires tag `v1.2.1`). Releases are unsigned by default. To Authenticode-sign the packaged executable, configure both GitHub Actions secrets:
 
 - `WINDOWS_CERTIFICATE_BASE64`: Base64-encoded PFX code-signing certificate.
 - `WINDOWS_CERTIFICATE_PASSWORD`: PFX password.
@@ -57,4 +57,4 @@ PowerShell can encode a PFX without printing binary data:
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\TrainKit.pfx"))
 ```
 
-The release workflow verifies the application and installer Authenticode signatures, produces SHA-256 checksums, and creates a GitHub build-provenance attestation before publishing.
+When both secrets are configured, the release workflow verifies the application Authenticode signature. Without them, it publishes an explicit unsigned-build warning. Every release contains only the standard Windows ZIP plus its SHA-256 checksum and GitHub build-provenance attestation.

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Brain, Play, Square, Upload, Unplug } from "lucide-react";
 import { apiRequest } from "@/lib/api";
+import { IMAGE_EXTENSIONS } from "@/lib/config";
 import { useJobOperation } from "@/lib/use-job-operation";
 import { useWebSocket } from "@/lib/websocket-context";
 import type { CollisionPolicy } from "@/types/contracts";
@@ -19,6 +20,7 @@ export function CaptionPanel({ isBackendOnline }: { isBackendOnline: boolean }) 
   const [prompt, setPrompt] = useState("Write a detailed, factual training caption.");
   const [collisionPolicy, setCollisionPolicy] = useState<CollisionPolicy>("fail");
   const [dryRun, setDryRun] = useState(false);
+  const [saveManifest, setSaveManifest] = useState(false);
   const [resumeManifestPath, setResumeManifestPath] = useState("");
   const [modelValid, setModelValid] = useState(false);
   const [modelLoaded, setModelLoaded] = useState(false);
@@ -74,6 +76,12 @@ export function CaptionPanel({ isBackendOnline }: { isBackendOnline: boolean }) 
     const selected = await window.electronAPI.openDirectory();
     if (selected) setLoadPath(selected);
   };
+  const browseImage = async () => {
+    const selected = await window.electronAPI.openFile({
+      filters: [{ name: "Supported images", extensions: IMAGE_EXTENSIONS }],
+    });
+    if (selected) setLoadPath(selected);
+  };
   const browseSave = async () => {
     const selected = await window.electronAPI.openDirectory();
     if (selected) setSavePath(selected);
@@ -111,6 +119,7 @@ export function CaptionPanel({ isBackendOnline }: { isBackendOnline: boolean }) 
         prompt,
         collision_policy: collisionPolicy,
         dry_run: dryRun,
+        save_manifest: saveManifest,
         resume_manifest_path: resumeManifestPath || null,
       });
     } catch (caught) {
@@ -150,10 +159,10 @@ export function CaptionPanel({ isBackendOnline }: { isBackendOnline: boolean }) 
           </div>
           <Textarea label="Caption instruction" value={prompt} onChange={setPrompt} rows={4} disabled={isActive} />
           <div className="grid gap-4 md:grid-cols-2">
-            <Input label="Input images" value={loadPath} onChange={setLoadPath} type="path" onBrowse={browseLoad} disabled={isActive} />
+            <Input label="Input image or folder" value={loadPath} onChange={setLoadPath} type="path" onBrowse={browseLoad} onBrowseFile={browseImage} disabled={isActive} />
             <Input label="Output captions" value={savePath} onChange={setSavePath} type="path" onBrowse={browseSave} disabled={isActive} />
           </div>
-          <BatchOptions collisionPolicy={collisionPolicy} onCollisionPolicyChange={setCollisionPolicy} dryRun={dryRun} onDryRunChange={setDryRun} resumeManifestPath={resumeManifestPath} onResumeManifestPathChange={setResumeManifestPath} disabled={isActive} />
+          <BatchOptions collisionPolicy={collisionPolicy} onCollisionPolicyChange={setCollisionPolicy} dryRun={dryRun} onDryRunChange={setDryRun} saveManifest={saveManifest} onSaveManifestChange={setSaveManifest} resumeManifestPath={resumeManifestPath} onResumeManifestPathChange={setResumeManifestPath} disabled={isActive} />
           {error && <p className="text-sm text-destructive">{error}</p>}
           <JobProgress job={job} />
           <div className="flex gap-3">
