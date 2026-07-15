@@ -1,72 +1,55 @@
+from __future__ import annotations
+
+import asyncio
+from types import SimpleNamespace
+
 from fastapi import APIRouter, Depends
-from pathlib import Path
-from pydantic import BaseModel
-from models import UpscaleRequest
-from core import get_connection_manager, get_service_manager, ConnectionManager
-from service.service_manager import ServiceManager
-from spandrel import ModelLoader
 
-router = APIRouter(prefix="", tags=["upscale"])
+from core.dependencies import get_job_manager, get_service_manager
+from core.jobs import JobManager
+from models import JobResponse, ModelInfoRequest, UpscaleRequest
 
-class ModelInfoRequest(BaseModel):
-    model_path: str
+router = APIRouter(tags=["upscale"])
+
+
+def _info_request(request: ModelInfoRequest):
+    return SimpleNamespace(
+        backend=request.backend,
+        upscale_model_path=request.model_path,
+        ncnn_model_bin_path=request.model_bin_path,
+        ncnn_input_blob=request.input_blob,
+        ncnn_output_blob=request.output_blob,
+        ncnn_scale=request.scale,
+        ncnn_use_vulkan=request.use_vulkan,
+        tile_size=512,
+        tile_overlap=16,
+    )
+
 
 @router.post("/upscale-model-info")
-async def get_model_info(request: ModelInfoRequest):
-    try:
-        model_path = Path(request.model_path)
-        if not model_path.exists():
-            return {"error": "Model file not found"}
-        
-        loader = ModelLoader()
-        model_descriptor = loader.load_from_file(model_path)
-        
-        scale = model_descriptor.scale
-        architecture = model_descriptor.architecture.name if hasattr(model_descriptor, 'architecture') else "Unknown"
-        
-        #just get the info
-        del model_descriptor
-        
-        return {
-            "scale": scale,
-            "architecture": architecture,
-            "name": model_path.name,
-        }
-    except Exception as e:
-        return {"error": str(e)}
+async def get_model_info(
+    request: ModelInfoRequest,
+    jobs: JobManager = Depends(get_job_manager),
+    services=Depends(get_service_manager),
+):
+    async with jobs.reserve("upscale model inspection"):
+        service = await asyncio.to_thread(services.get_upscale_service, _info_request(request))
+        return service.info
 
-@router.post("/upscale")
+
+@router.post("/upscale", response_model=JobResponse, status_code=202)
 async def upscale(
     request: UpscaleRequest,
-    manager: ConnectionManager = Depends(get_connection_manager),
-    service_manager: ServiceManager = Depends(get_service_manager),
+    jobs: JobManager = Depends(get_job_manager),
+    services=Depends(get_service_manager),
 ):
-    try:
-        await manager.send_log("info", f"Loading upscale model from {request.upscale_model_path}", "backend")
-        
-        # Future: Add backend selection for NCNN
-        service = service_manager.get_upscale_service(
-            model_path=Path(request.upscale_model_path)
-        )
-        
-        async def progress(current: int, total: int, msg: str):
-            await manager.send_progress(current, total, msg)
-            await manager.send_log("info", msg, "backend")
-        
-        await service.upscale_images(
-            load_path=Path(request.load_path),
-            save_path=Path(request.save_path),
-            output_format=request.format,
-            use_tiling=request.use_tiling,
-            progress_callback=progress
-        )
-        
-        await manager.send_log("success", "Upscaling complete!", "backend")
-        return {"status": "Upscaling complete!"}
-    except Exception as e:
-        await manager.send_log("error", str(e), "backend")
-        return {"error": str(e)}
+    async def run(context):
+        if request.dry_run:
+            from service.image_upscaling import prepare_upscale_manifest
 
+            _manifest, output_manifest, _format = await prepare_upscale_manifest(request, context)
+            return output_manifest
+        service = await asyncio.to_thread(services.get_upscale_service, request)
+        return await service.process(request, context)
 
-# future ncnn integration point:
-# @router.post("/upscale/ncnn")
+    return await jobs.start("upscale", run)

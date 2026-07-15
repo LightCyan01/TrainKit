@@ -1,102 +1,69 @@
-from fastapi import APIRouter, Depends
+from __future__ import annotations
+
 from pathlib import Path
-from models import CaptionRequest, PreloadRequest, ModelStatusRequest
-from core import get_connection_manager, get_service_manager, ConnectionManager
-from service.service_manager import ServiceManager
 
-router = APIRouter(prefix="", tags=["caption"])
+from fastapi import APIRouter, Depends
 
-@router.post("/caption")
+from core.dependencies import (
+    get_connection_manager,
+    get_job_manager,
+    get_service_manager,
+)
+from core.jobs import JobManager
+from core.websocket import ConnectionManager
+from models import CaptionRequest, JobResponse, ModelStatusRequest, PreloadRequest
+
+router = APIRouter(tags=["caption"])
+
+
+@router.post("/caption", response_model=JobResponse, status_code=202)
 async def caption(
     request: CaptionRequest,
-    manager: ConnectionManager = Depends(get_connection_manager),
-    service_manager: ServiceManager = Depends(get_service_manager),
+    jobs: JobManager = Depends(get_job_manager),
+    services=Depends(get_service_manager),
 ):
-    try:
-        await manager.send_log("info", f"Loading caption model from {request.caption_model_path}", "backend")
-        
-        service = service_manager.get_caption_service(
-            model_path=Path(request.caption_model_path)
+    async def run(context):
+        service = services.get_caption_service(
+            Path(request.caption_model_path), request.adapter, request.max_new_tokens
         )
-        
-        async def progress(current: int, total: int, msg: str):
-            await manager.send_progress(current, total, msg)
-            await manager.send_log("info", msg, "backend")
-        
-        await service.caption_images(
-            load_path=Path(request.load_path),
-            save_path=Path(request.save_path),
-            prompt=request.prompt,
-            progress_callback=progress
-        )
-        
-        await manager.send_log("success", "Captioning complete!", "backend")
-        return {"status": "Captioning complete!"}
-    except Exception as e:
-        await manager.send_log("error", str(e), "backend")
-        return {"error": str(e)}
+        return await service.process(request, context)
+
+    return await jobs.start("caption", run)
+
 
 @router.post("/preload")
 async def preload_model(
     request: PreloadRequest,
     manager: ConnectionManager = Depends(get_connection_manager),
-    service_manager: ServiceManager = Depends(get_service_manager),
+    jobs: JobManager = Depends(get_job_manager),
+    services=Depends(get_service_manager),
 ):
-    try:
-        model_path = Path(request.model_path)
-        
-        if not model_path.exists():
-            return {"error": "Model path does not exist"}
-        
-        await manager.send_log("info", f"Preloading caption model from {model_path}...", "backend")
-        
-        async def progress(current: int, total: int, msg: str):
-            await manager.send_progress(current, total, msg)
-            await manager.send_log("info", msg, "backend")
-        
-        result = await service_manager.preload_caption_model(model_path, progress)
-        
-        await manager.send_log("success", f"Model preloaded! Using {result.get('gpu_memory_allocated_gb', 0):.2f} GB GPU memory", "backend")
-        
+    async with jobs.reserve("caption model preload"):
+        await manager.send_log("info", "Loading caption model", "backend")
+        result = await services.preload_caption_model(Path(request.model_path), request.adapter)
+        await manager.send_log("success", "Caption model loaded", "backend")
         return result
-    except Exception as e:
-        await manager.send_log("error", f"Failed to preload model: {str(e)}", "backend")
-        return {"error": str(e)}
+
 
 @router.post("/model-status")
 async def model_status(
     request: ModelStatusRequest,
-    service_manager: ServiceManager = Depends(get_service_manager),
+    services=Depends(get_service_manager),
 ):
-    try:
-        model_path = Path(request.model_path)
-        is_loaded = service_manager.is_caption_model_loaded(model_path)
-        memory_info = service_manager.get_gpu_memory_usage()
-        
-        return {
-            "is_loaded": is_loaded,
-            "model_path": str(model_path),
-            **memory_info
-        }
-    except Exception as e:
-        return {"error": str(e), "is_loaded": False}
+    return {
+        "is_loaded": services.is_caption_model_loaded(Path(request.model_path), request.adapter),
+        "model_path": str(Path(request.model_path).resolve()),
+        **services.get_gpu_memory_usage(),
+    }
+
 
 @router.post("/unload")
 async def unload_model(
     manager: ConnectionManager = Depends(get_connection_manager),
-    service_manager: ServiceManager = Depends(get_service_manager),
+    jobs: JobManager = Depends(get_job_manager),
+    services=Depends(get_service_manager),
 ):
-    try:
-        await manager.send_log("info", "Unloading caption model...", "backend")
-        
-        memory_info = service_manager.unload_caption_model()
-        
-        await manager.send_log("success", "Caption model unloaded from GPU memory", "backend")
-        
-        return {
-            "status": "unloaded",
-            **memory_info
-        }
-    except Exception as e:
-        await manager.send_log("error", f"Failed to unload model: {str(e)}", "backend")
-        return {"error": str(e)}
+    async with jobs.reserve("caption model unload"):
+        result = services.unload_caption_model()
+        await manager.send_log("success", "Caption model unloaded", "backend")
+        return {"status": "unloaded", **result}

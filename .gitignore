@@ -93,6 +93,12 @@ out/
 
 # Python virtual environments
 backend/.venv/
+backend/.python/
+backend/.tmp/
+backend/.model-cache/
+backend/.setup_complete.json
+backend/.pytest_cache/
+backend/.ruff_cache/
 .venv/
 __pycache__/
 *.py[cod]
