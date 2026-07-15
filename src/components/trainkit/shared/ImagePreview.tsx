@@ -1,4 +1,10 @@
-import { useState, useEffect, useCallback, memo } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  memo,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { cn } from "@/lib/utils";
 import {
   ChevronLeft,
@@ -45,26 +51,34 @@ export const ImagePreview = memo(function ImagePreview({
       setImages([]);
       if (!isControlled) setInternalIndex(0);
       setImageDataUrl(null);
+      setIsLoading(false);
+      setError(null);
       return;
     }
 
+    let cancelled = false;
     const loadImages = async () => {
       setIsLoading(true);
       setError(null);
       try {
         const imageList = await window.electronAPI.listImages(directoryPath);
+        if (cancelled) return;
         setImages(imageList);
         // Only reset index if not controlled and directory changed
         if (!isControlled) setInternalIndex(0);
       } catch {
+        if (cancelled) return;
         setError("Failed to load images");
         setImages([]);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
-    loadImages();
+    void loadImages();
+    return () => {
+      cancelled = true;
+    };
   }, [directoryPath, isControlled]);
 
   // Load current image as data URL
@@ -72,41 +86,45 @@ export const ImagePreview = memo(function ImagePreview({
     const img = images[currentIndex];
     if (!img) {
       setImageDataUrl(null);
+      setIsLoadingImage(false);
       return;
     }
 
+    let cancelled = false;
     const loadImage = async () => {
       setIsLoadingImage(true);
       try {
         const dataUrl = await window.electronAPI.readImageAsDataUrl(img);
-        setImageDataUrl(dataUrl);
+        if (!cancelled) setImageDataUrl(dataUrl);
       } catch {
-        setImageDataUrl(null);
+        if (!cancelled) setImageDataUrl(null);
       } finally {
-        setIsLoadingImage(false);
+        if (!cancelled) setIsLoadingImage(false);
       }
     };
 
-    loadImage();
+    void loadImage();
+    return () => {
+      cancelled = true;
+    };
   }, [images, currentIndex]);
 
-  // Handle keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (images.length === 0) return;
-
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        setCurrentIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        setCurrentIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
+  const handleKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setCurrentIndex((previous) =>
+          previous > 0 ? previous - 1 : images.length - 1,
+        );
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setCurrentIndex((previous) =>
+          previous < images.length - 1 ? previous + 1 : 0,
+        );
       }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [images.length, setCurrentIndex]);
+    },
+    [images.length, setCurrentIndex],
+  );
 
   const goToPrevious = useCallback(() => {
     setCurrentIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
@@ -179,8 +197,11 @@ export const ImagePreview = memo(function ImagePreview({
 
   return (
     <div
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      aria-label="Image preview; use left and right arrow keys to navigate"
       className={cn(
-        "flex flex-col h-full bg-dark/50 border border-border rounded overflow-hidden",
+        "flex flex-col h-full bg-dark/50 border border-border rounded overflow-hidden focus:outline-none focus:border-primary/50",
         className,
       )}
     >

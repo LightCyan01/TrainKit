@@ -2,6 +2,7 @@ import React from "react";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useWebSocket, LogEntry } from "@/lib/websocket-context";
+import type { LogLevel, LogSource } from "@/types/contracts";
 import {
   Terminal,
   Trash2,
@@ -17,8 +18,6 @@ import {
   FolderOpen,
 } from "lucide-react";
 
-type LogLevel = "info" | "success" | "warning" | "error";
-
 interface LogsPanelProps {
   isBackendOnline: boolean;
 }
@@ -27,6 +26,11 @@ const levelConfig: Record<
   LogLevel,
   { icon: React.ReactNode; color: string; bgColor: string }
 > = {
+  debug: {
+    icon: <Terminal className="h-3 w-3" />,
+    color: "text-muted-foreground",
+    bgColor: "bg-muted/10",
+  },
   info: {
     icon: <Info className="h-3 w-3" />,
     color: "text-accent",
@@ -53,12 +57,11 @@ export function LogsPanel({ isBackendOnline }: LogsPanelProps) {
   const { logs, clearLogs, isConnected } = useWebSocket();
   const [isPaused, setIsPaused] = useState(false);
   const [filter, setFilter] = useState<LogLevel | "all">("all");
-  const [sourceFilter, setSourceFilter] = useState<
-    "all" | "frontend" | "backend" | "main"
-  >("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | LogSource>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
   const [pausedLogs, setPausedLogs] = useState<LogEntry[]>([]);
+  const [logPath, setLogPath] = useState("");
   const logsEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -78,6 +81,10 @@ export function LogsPanel({ isBackendOnline }: LogsPanelProps) {
       logsEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [logs, autoScroll, isPaused]);
+
+  useEffect(() => {
+    void window.electronAPI.getLogFilePath().then(setLogPath);
+  }, []);
 
   // Handle manual scroll to disable auto-scroll
   const handleScroll = () => {
@@ -232,13 +239,23 @@ export function LogsPanel({ isBackendOnline }: LogsPanelProps) {
               </button>
 
               <button
-                onClick={() => window.electronAPI?.openLogFile()}
+                onClick={() => void window.electronAPI.openLogsFolder()}
+                title="Open the logs folder beside TrainKit"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border
+                text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              >
+                <FolderOpen className="h-3 w-3" />
+                Logs Folder
+              </button>
+
+              <button
+                onClick={() => void window.electronAPI.openLogFile()}
                 title="Open the persistent log file in your default text editor"
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border 
                 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
               >
-                <FolderOpen className="h-3 w-3" />
-                Log File
+                <Terminal className="h-3 w-3" />
+                Current Log
               </button>
 
               <button
@@ -283,7 +300,7 @@ export function LogsPanel({ isBackendOnline }: LogsPanelProps) {
                   )}
                 />
                 <span className="text-[10px] text-muted-foreground">
-                  WebSocket: {isConnected ? "Connected" : "Disconnected"}
+                  Backend events: {isConnected ? "Connected" : "Disconnected"}
                 </span>
               </div>
             </div>
@@ -351,9 +368,16 @@ export function LogsPanel({ isBackendOnline }: LogsPanelProps) {
 
           {/* Status Bar */}
           <div className="flex items-center justify-between px-4 py-1.5 border-t border-border bg-dark/30 text-[10px] text-muted-foreground">
-            <span>
-              Showing {filteredLogs.length} of {logs.length} entries
-            </span>
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="shrink-0">
+                Showing {filteredLogs.length} of {logs.length} entries
+              </span>
+              {logPath && (
+                <span className="truncate" title={logPath}>
+                  Log: {logPath}
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-3">
               {isPaused && (
                 <span className="flex items-center gap-1 text-yellow-500">

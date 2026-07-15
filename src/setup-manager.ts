@@ -1,7 +1,9 @@
-import { spawn, exec, ChildProcess } from "child_process";
+import { spawn, execFile, type ChildProcess } from "child_process";
 import path from "node:path";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import { app } from "electron";
+import { getRuntimePaths } from "./runtime-paths";
 
 export type SetupStatus =
   | "checking"
@@ -18,33 +20,48 @@ export interface SetupProgress {
 
 export class SetupManager {
   private backendPath: string;
+  private runtimePath: string;
   private currentProcess: ChildProcess | null = null;
   private isAborting = false;
 
   constructor() {
-    const isDev = !app.isPackaged;
-
-    this.backendPath = isDev
-      ? path.join(app.getAppPath(), "backend")
-      : path.join(process.resourcesPath, "backend");
+    const paths = getRuntimePaths();
+    this.backendPath = paths.backendPath;
+    this.runtimePath = paths.runtimePath;
   }
 
   isSetupRequired(): boolean {
-    const venvPath = path.join(this.backendPath, ".venv");
-    const markerPath = path.join(this.backendPath, ".setup_complete");
-
-    return !fs.existsSync(venvPath) || !fs.existsSync(markerPath);
+    const venvPath = path.join(this.runtimePath, ".venv");
+    const markerPath = path.join(this.runtimePath, ".setup_complete.json");
+    if (!fs.existsSync(venvPath) || !fs.existsSync(markerPath)) return true;
+    try {
+      const marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as {
+        version?: string;
+        lockHash?: string;
+      };
+      return marker.version !== app.getVersion() || marker.lockHash !== this.lockHash();
+    } catch {
+      return true;
+    }
   }
 
   getBackendPath(): string {
     return this.backendPath;
   }
 
+  getRuntimePath(): string {
+    return this.runtimePath;
+  }
+
   abort(): void {
     this.isAborting = true;
     if (this.currentProcess && this.currentProcess.pid) {
       if (process.platform === "win32") {
-        exec(`taskkill /pid ${this.currentProcess.pid} /T /F`, () => {});
+        execFile(
+          "taskkill",
+          ["/pid", String(this.currentProcess.pid), "/T", "/F"],
+          () => {},
+        );
       } else {
         this.currentProcess.kill("SIGKILL");
       }
@@ -61,6 +78,11 @@ export class SetupManager {
       if (this.isAborting) return false;
 
       onProgress({ status: "checking", message: "Checking prerequisites..." });
+      onProgress({
+        status: "checking",
+        message: `Dependency location: ${this.runtimePath}`,
+      });
+      this.ensureRuntimeIsWritable();
       const hasUv = await this.checkUvInstalled();
       const hasVcpp = await this.checkVcppInstalled();
 
@@ -103,16 +125,12 @@ export class SetupManager {
 
       if (this.isAborting) return false;
 
-      const venvPath = path.join(this.backendPath, ".venv");
-      const markerPath = path.join(this.backendPath, ".setup_complete");
-
-      if (!fs.existsSync(venvPath)) {
-        onProgress({
-          status: "installing",
-          message: "Creating Python environment...",
-        });
-        await this.runCommand("uv", ["venv"], this.backendPath, onProgress);
-      }
+      const venvPath = path.join(this.runtimePath, ".venv");
+      const markerPath = path.join(this.runtimePath, ".setup_complete.json");
+      fs.mkdirSync(this.runtimePath, { recursive: true });
+      const paths = getRuntimePaths();
+      fs.mkdirSync(paths.setupCachePath, { recursive: true });
+      fs.mkdirSync(paths.temporaryPath, { recursive: true });
 
       if (this.isAborting) return false;
 
@@ -120,11 +138,32 @@ export class SetupManager {
         status: "installing",
         message: "Installing dependencies (this may take a few minutes)...",
       });
-      await this.runCommand("uv", ["sync"], this.backendPath, onProgress);
+      await this.runCommand(
+        "uv",
+        ["sync", "--project", this.backendPath, "--locked", "--no-dev"],
+        this.backendPath,
+        onProgress,
+        venvPath,
+      );
 
       if (this.isAborting) return false;
 
-      fs.writeFileSync(markerPath, new Date().toISOString());
+      this.cleanSetupArtifacts(onProgress);
+
+      fs.writeFileSync(
+        markerPath,
+        JSON.stringify(
+          {
+            version: app.getVersion(),
+            lockHash: this.lockHash(),
+            completedAt: new Date().toISOString(),
+          },
+          null,
+          2,
+        ),
+      );
+
+      this.cleanLegacyRuntime(onProgress);
 
       onProgress({ status: "complete", message: "Setup complete!" });
       return true;
@@ -140,7 +179,7 @@ export class SetupManager {
 
   private async checkUvInstalled(): Promise<boolean> {
     return new Promise((resolve) => {
-      exec("uv --version", (error) => {
+      execFile("uv", ["--version"], (error) => {
         resolve(!error);
       });
     });
@@ -148,8 +187,18 @@ export class SetupManager {
 
   private async checkVcppInstalled(): Promise<boolean> {
     return new Promise((resolve) => {
-      exec(
-        'reg query "HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64" /v Version',
+      if (process.platform !== "win32") {
+        resolve(true);
+        return;
+      }
+      execFile(
+        "reg",
+        [
+          "query",
+          "HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64",
+          "/v",
+          "Version",
+        ],
         (error) => {
           if (!error) {
             resolve(true);
@@ -171,18 +220,23 @@ export class SetupManager {
     args: string[],
     cwd: string,
     onProgress: (progress: SetupProgress) => void,
+    venvPath: string,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
+      const paths = getRuntimePaths();
       const proc = spawn(command, args, {
         cwd,
         stdio: "pipe",
-        shell: true,
+        shell: false,
         env: {
           ...process.env,
           PYTHONIOENCODING: "utf-8",
-          UV_LINK_MODE: "copy",
-          UV_PYTHON_INSTALL_DIR: path.join(this.backendPath, ".python"),
-          UV_CACHE_DIR: path.join(this.backendPath, ".cache"),
+          UV_PROJECT_ENVIRONMENT: venvPath,
+          UV_PYTHON_INSTALL_DIR: path.join(this.runtimePath, ".python"),
+          UV_CACHE_DIR: paths.setupCachePath,
+          TMP: paths.temporaryPath,
+          TEMP: paths.temporaryPath,
+          TMPDIR: paths.temporaryPath,
         },
       });
 
@@ -222,6 +276,74 @@ export class SetupManager {
         }
       });
     });
+  }
+
+  private ensureRuntimeIsWritable(): void {
+    fs.mkdirSync(this.runtimePath, { recursive: true });
+    const probe = path.join(
+      this.runtimePath,
+      `.trainkit-write-test-${process.pid}-${Date.now()}`,
+    );
+    try {
+      fs.writeFileSync(probe, "TrainKit write test", { flag: "wx" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `TrainKit cannot write beside its packaged backend (${this.runtimePath}). ` +
+          `Move or extract TrainKit to a writable folder and try again. ${message}`,
+      );
+    } finally {
+      fs.rmSync(probe, { force: true });
+    }
+  }
+
+  private cleanSetupArtifacts(
+    onProgress: (progress: SetupProgress) => void,
+  ): void {
+    const paths = getRuntimePaths();
+    onProgress({ status: "installing", message: "Removing setup download cache..." });
+    for (const generatedPath of [paths.setupCachePath, paths.temporaryPath]) {
+      try {
+        fs.rmSync(generatedPath, { recursive: true, force: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        onProgress({
+          status: "installing",
+          message: `Could not completely remove ${generatedPath}: ${message}`,
+        });
+      }
+    }
+  }
+
+  private cleanLegacyRuntime(
+    onProgress: (progress: SetupProgress) => void,
+  ): void {
+    const legacyRuntimePath = getRuntimePaths().legacyRuntimePath;
+    if (
+      path.resolve(legacyRuntimePath) === path.resolve(this.runtimePath) ||
+      path.basename(legacyRuntimePath) !== "backend-runtime" ||
+      !fs.existsSync(legacyRuntimePath)
+    ) {
+      return;
+    }
+    try {
+      fs.rmSync(legacyRuntimePath, { recursive: true, force: true });
+      onProgress({
+        status: "installing",
+        message: `Removed the obsolete per-user runtime: ${legacyRuntimePath}`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      onProgress({
+        status: "installing",
+        message: `The obsolete per-user runtime can be removed manually: ${legacyRuntimePath} (${message})`,
+      });
+    }
+  }
+
+  private lockHash(): string {
+    const lockPath = path.join(this.backendPath, "uv.lock");
+    return createHash("sha256").update(fs.readFileSync(lockPath)).digest("hex");
   }
 }
 

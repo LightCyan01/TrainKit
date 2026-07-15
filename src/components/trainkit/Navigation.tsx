@@ -1,8 +1,8 @@
 import React, { memo } from "react";
 import { cn } from "@/lib/utils";
-import { MessageSquareText, Maximize2, FileEdit, Terminal } from "lucide-react";
+import { MessageSquareText, Maximize2, FileEdit, Tags, Terminal } from "lucide-react";
 
-export type ServiceTab = "caption" | "upscale" | "rename" | "logs";
+export type ServiceTab = "caption" | "upscale" | "rename" | "tag" | "logs";
 
 interface NavigationProps {
   activeTab: ServiceTab;
@@ -32,6 +32,12 @@ const tabs: {
     label: "RENAME",
     icon: <FileEdit className="h-4 w-4" />,
     description: "Batch File Renaming",
+  },
+  {
+    id: "tag",
+    label: "TAG",
+    icon: <Tags className="h-4 w-4" />,
+    description: "Image Classification",
   },
   {
     id: "logs",

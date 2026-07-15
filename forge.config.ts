@@ -8,6 +8,23 @@ import { copyFileSync, mkdirSync, readdirSync, statSync } from "fs";
 import { join, resolve } from "path";
 
 const iconPath = resolve(process.cwd(), "resources", "icon");
+const certificateFile = process.env.WINDOWS_CERTIFICATE_FILE;
+const certificatePassword = process.env.WINDOWS_CERTIFICATE_PASSWORD;
+
+if (certificateFile && !certificatePassword) {
+  throw new Error(
+    "WINDOWS_CERTIFICATE_PASSWORD is required when WINDOWS_CERTIFICATE_FILE is set",
+  );
+}
+
+const windowsSign = certificateFile
+  ? {
+      certificateFile,
+      certificatePassword,
+      description: "TrainKit dataset preparation toolkit",
+      website: "https://github.com/LightCyan01/TrainKit",
+    }
+  : undefined;
 
 function copyDirExclude(src: string, dest: string, exclude: string[]) {
   mkdirSync(dest, { recursive: true });
@@ -33,18 +50,35 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     icon: iconPath,
+    appCopyright: "Copyright © 2026 LightCyan01",
+    prune: true,
+    win32metadata: {
+      CompanyName: "LightCyan01",
+      FileDescription: "TrainKit dataset preparation toolkit",
+      ProductName: "TrainKit",
+    },
+    ...(windowsSign ? { windowsSign } : {}),
   },
   hooks: {
     postPackage: async (_config, options) => {
-      const resourcesPath = join(options.outputPaths[0], "resources");
-      const backendDest = join(resourcesPath, "backend");
-      copyDirExclude("./backend", backendDest, [".venv", ".python", ".cache"]);
+      const backendSource = resolve(process.cwd(), "backend");
+      for (const outputPath of options.outputPaths) {
+        const resourcesPath = join(outputPath, "resources");
+        const backendDest = join(resourcesPath, "backend");
+        copyDirExclude(backendSource, backendDest, [
+          ".venv",
+          ".python",
+          ".cache",
+          "tests",
+        ]);
+      }
     },
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({
       setupIcon: iconPath + ".ico",
+      ...(windowsSign ? { windowsSign } : {}),
     }),
     new MakerZIP({}, ["win32"]),
   ],

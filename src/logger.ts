@@ -1,13 +1,14 @@
-import { app } from "electron";
 import path from "node:path";
 import fs from "node:fs";
+import type { LogSource } from "./types/contracts";
+import { getRuntimePaths } from "./runtime-paths";
 
 export type LogLevel = "debug" | "info" | "success" | "warning" | "error";
 
 interface LogEntry {
   timestamp: string;
   level: LogLevel;
-  source: string;
+  source: LogSource;
   message: string;
 }
 
@@ -17,29 +18,37 @@ class Logger {
   private sessionId: string;
   private writeStream: fs.WriteStream | null = null;
   private listeners: Array<(entry: LogEntry) => void> = [];
+  private entries: LogEntry[] = [];
 
   constructor() {
-    // Create logs folder in the app directory (next to exe when packaged, project root in dev)
-    const appDir = app.isPackaged
-      ? path.dirname(process.execPath)
-      : app.getAppPath();
-    this.logDir = path.join(appDir, "logs");
+    const paths = getRuntimePaths();
+    this.logDir = this.selectLogDir(
+      paths.logsPath,
+      path.join(path.dirname(paths.legacyRuntimePath), "logs"),
+    );
 
     // Generate session ID with timestamp
     const now = new Date();
     this.sessionId = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
     this.logFile = path.join(this.logDir, `session-${this.sessionId}.log`);
 
-    this.ensureLogDir();
     this.initWriteStream();
     this.cleanOldLogs();
 
     this.info("logger", `Log file: ${this.logFile}`);
   }
 
-  private ensureLogDir(): void {
-    if (!fs.existsSync(this.logDir)) {
-      fs.mkdirSync(this.logDir, { recursive: true });
+  private selectLogDir(primary: string, fallback: string): string {
+    try {
+      fs.mkdirSync(primary, { recursive: true });
+      fs.accessSync(primary, fs.constants.W_OK);
+      return primary;
+    } catch (error) {
+      console.error(
+        `[Logger] Cannot write logs beside TrainKit (${primary}): ${String(error)}`,
+      );
+      fs.mkdirSync(fallback, { recursive: true });
+      return fallback;
     }
   }
 
@@ -78,7 +87,7 @@ class Logger {
     return `[${entry.timestamp}] [${entry.level.toUpperCase()}] [${entry.source}] ${entry.message}`;
   }
 
-  private write(level: LogLevel, source: string, message: string): void {
+  private write(level: LogLevel, source: LogSource, message: string): void {
     const entry: LogEntry = {
       timestamp: this.formatTimestamp(),
       level,
@@ -89,6 +98,7 @@ class Logger {
     const line = this.formatLogLine(entry);
 
     console.log(line);
+    this.entries = [...this.entries.slice(-999), entry];
 
     if (this.writeStream) {
       this.writeStream.write(line + "\n");
@@ -103,23 +113,23 @@ class Logger {
     }
   }
 
-  debug(source: string, message: string): void {
+  debug(source: LogSource, message: string): void {
     this.write("debug", source, message);
   }
 
-  info(source: string, message: string): void {
+  info(source: LogSource, message: string): void {
     this.write("info", source, message);
   }
 
-  success(source: string, message: string): void {
+  success(source: LogSource, message: string): void {
     this.write("success", source, message);
   }
 
-  warning(source: string, message: string): void {
+  warning(source: LogSource, message: string): void {
     this.write("warning", source, message);
   }
 
-  error(source: string, message: string): void {
+  error(source: LogSource, message: string): void {
     this.write("error", source, message);
   }
 
@@ -147,6 +157,10 @@ class Logger {
     } catch {
       return "";
     }
+  }
+
+  getEntries(): LogEntry[] {
+    return [...this.entries];
   }
 
   close(): void {

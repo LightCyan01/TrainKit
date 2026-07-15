@@ -12,16 +12,7 @@ export default defineConfig({
     },
   },
   build: {
-    minify: "esbuild",
     target: "esnext",
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          "react-vendor": ["react", "react-dom"],
-          "icons": ["lucide-react"],
-        },
-      },
-    },
   },
   optimizeDeps: {
     include: ["react", "react-dom"],

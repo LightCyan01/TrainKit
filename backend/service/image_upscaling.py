@@ -1,168 +1,217 @@
-from spandrel import ModelLoader
+from __future__ import annotations
+
+import asyncio
+import gc
 from pathlib import Path
-from PIL import Image
-from typing import Optional, Callable, Awaitable
+
+import numpy as np
 import torch
 import torchvision.transforms as transforms
-import numpy as np
-import asyncio
-from tiler import Tiler, Merger
-from config.image_formats import SUPPORTED_OUTPUT_FORMATS, SUPPORTED_INPUT_EXTENSIONS
+from PIL import Image
+from spandrel import ModelLoader
+from tiler import Merger, Tiler
 
-# Type alias for async progress callback
-ProgressCallback = Callable[[int, int, str], Awaitable[None]]
+from config.image_formats import SUPPORTED_OUTPUT_FORMATS
+from core.exceptions import InvalidPathError, JobCancelledError, ModelLoadError, ProcessingError
+from core.jobs import JobContext
+from models import UpscaleRequest
+from service.manifest import BatchManifest, build_manifest, manifest_path
+from utils.file_util import atomic_save_image, list_images, load_rgb_image
+
 
 class ImageUpscaleService:
-    
-    def __init__(self, device, model_path: Path, tile_size: int = 512, tile_overlap: int = 16):
-        self.model_path = model_path
+    backend_name = "spandrel"
+
+    def __init__(
+        self,
+        device: torch.device,
+        model_path: Path,
+        tile_size: int = 512,
+        tile_overlap: int = 16,
+    ):
+        self.model_path = model_path.resolve()
         self.device = device
         self.tile_size = tile_size
         self.overlap = tile_overlap
-        
-        loader = ModelLoader()
-        model_descriptor = loader.load_from_file(model_path)
-        self.model = model_descriptor.model.to(device).eval()
-        self.scale = model_descriptor.scale
-        
-        print(f"Model: {model_path.name}")
-        print(f"Scale: {self.scale}x")
-        print(f"Tiling: {tile_size}px tiles with {tile_overlap}px overlap")
-        print(f"Tiling support: {model_descriptor.tiling}")
-        
-    
-    def _process_tile(self, tile_pil):
-        to_tensor = transforms.ToTensor()
-        tile_tensor = to_tensor(tile_pil).unsqueeze(0).to(self.device)
-        
-        with torch.no_grad():
-            result = self.model(tile_tensor)
-        
+        self.descriptor = None
+        self.scale = 1
+        self._load()
+
+    def _load(self):
+        if self.model_path.suffix.casefold() != ".safetensors":
+            raise ModelLoadError(
+                "Spandrel models must use .safetensors. "
+                "Legacy pickle checkpoints are disabled for safety."
+            )
+        try:
+            descriptor = ModelLoader().load_from_file(self.model_path)
+            if not callable(descriptor) or not hasattr(descriptor, "scale"):
+                raise TypeError("Loaded object is not an image model descriptor")
+            self.descriptor = descriptor.to(self.device).eval()
+            self.scale = int(descriptor.scale)
+        except Exception as exc:
+            raise ModelLoadError(f"Could not load Spandrel model: {exc}") from exc
+
+    @property
+    def info(self) -> dict[str, str | int | bool]:
+        architecture = getattr(getattr(self.descriptor, "architecture", None), "name", "Unknown")
+        return {
+            "backend": self.backend_name,
+            "scale": self.scale,
+            "architecture": str(architecture),
+            "name": self.model_path.name,
+            "tiling": bool(getattr(self.descriptor, "tiling", True)),
+        }
+
+    def _process_tile(self, tile_pil: Image.Image) -> Image.Image:
+        tile_tensor = transforms.ToTensor()(tile_pil).unsqueeze(0).to(self.device)
+        with torch.inference_mode():
+            result = self.descriptor(tile_tensor)
         result = torch.clamp(result, 0, 1)
-        
-        to_pil = transforms.ToPILImage()
-        output_img = to_pil(result.cpu().squeeze(0))
-        
-        #cleanup
-        del tile_tensor, result
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        
-        return output_img
-        
-    
-    def upscale_with_tiler(self, image: Image.Image, progress_callback: Optional[Callable[[int, int], None]] = None):
-        img_array = np.array(image)
-        
+        return transforms.ToPILImage()(result.cpu().squeeze(0))
+
+    def _upscale_with_tiler(self, image: Image.Image, cancelled) -> Image.Image:
+        image_array = np.asarray(image)
         tiler = Tiler(
-            data_shape=img_array.shape,
+            data_shape=image_array.shape,
             tile_shape=(self.tile_size, self.tile_size, 3),
             channel_dimension=2,
-            overlap=self.overlap
+            overlap=self.overlap,
         )
-        
-        output_shape = (
-            img_array.shape[0] * self.scale,
-            img_array.shape[1] * self.scale,
-            3
-        )
-        
         output_tiler = Tiler(
-            data_shape=output_shape,
+            data_shape=(
+                image_array.shape[0] * self.scale,
+                image_array.shape[1] * self.scale,
+                3,
+            ),
             tile_shape=(self.tile_size * self.scale, self.tile_size * self.scale, 3),
             channel_dimension=2,
-            overlap=self.overlap * self.scale
+            overlap=self.overlap * self.scale,
         )
-        
-        merger = Merger(output_tiler, window='hamming')
-        
-        total_tiles = len(tiler)
-        
-        for tile_id, tile in tiler(img_array):
-            tile_img = Image.fromarray(tile.astype(np.uint8))
-            tile_upscaled = self._process_tile(tile_img)
-            upscaled_array = np.array(tile_upscaled)
-            merger.add(tile_id, upscaled_array)
-            
-            if progress_callback:
-                progress_callback(tile_id + 1, total_tiles)
-        
-        result = merger.merge(unpad=True)
-        result = np.clip(result, 0, 255)
-        result_img = Image.fromarray(result.astype(np.uint8))
-        
-        return result_img
-    
-    async def upscale_images(
-        self,
-        load_path: Path,
-        save_path: Path,
-        output_format: str = "jpg",
-        use_tiling: bool = True,
-        progress_callback: Optional[ProgressCallback] = None
-    ):
-        save_path.mkdir(parents=True, exist_ok=True)
-        
-        files = [f for f in load_path.iterdir() 
-                if f.is_file() and f.suffix.lower() in SUPPORTED_INPUT_EXTENSIONS]
-        
-        format_info = SUPPORTED_OUTPUT_FORMATS[output_format.lower()]
-        total = len(files)
-        
-        print(f"\nFound {total} images to process")
-        print("=" * 60)
-        
-        for idx, img_file in enumerate(files, 1):
-            if progress_callback:
-                await progress_callback(idx, total, f"Upscaling {img_file.name}")
-            
-            print(f"\nProcessing: {img_file.name}")
-            
-            # Run CPU/GPU-bound work in executor
-            loop = asyncio.get_event_loop()
-            image = await loop.run_in_executor(None, Image.open, img_file)
-            
-            # Convert color mode if needed
-            if image.mode == "RGBA":
-                print("Converting RGBA to RGB")
-                image = image.convert('RGB')
-            elif image.mode != "RGB":
-                image = image.convert('RGB')
-            
-            if use_tiling:
-                output = await loop.run_in_executor(None, self.upscale_with_tiler, image)
-            else:
-                print("Direct upscaling (no tiling)")
-                output = await loop.run_in_executor(None, self._direct_upscale, image)
-            
-            out_path = save_path / (img_file.stem + format_info["extension"])
-            await loop.run_in_executor(None, output.save, out_path, format_info["pil_format"])
-            print(f"Saved: {out_path}")
-        
-        print("\n" + "=" * 60)
-        print(f"Complete! Processed {total} images")
-    
-    def _direct_upscale(self, image: Image.Image):
-        to_tensor = transforms.ToTensor()
-        img_tensor = to_tensor(image).unsqueeze(0).to(self.device)
-        
-        with torch.no_grad():
-            result = self.model(img_tensor)
-        
-        to_pil = transforms.ToPILImage()
-        output = to_pil(result.cpu().squeeze(0))
-        
-        # Explicit cleanup
-        del img_tensor, result
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        
-        return output
-    
+        merger = Merger(output_tiler, window="hamming")
+        for tile_id, tile in tiler(image_array):
+            if cancelled.is_set():
+                raise JobCancelledError()
+            upscaled = self._process_tile(Image.fromarray(tile.astype(np.uint8)))
+            merger.add(tile_id, np.asarray(upscaled))
+        result = np.clip(merger.merge(unpad=True), 0, 255).astype(np.uint8)
+        return Image.fromarray(result)
+
+    def _direct_upscale(self, image: Image.Image) -> Image.Image:
+        return self._process_tile(image)
+
+    async def process(self, request: UpscaleRequest, context: JobContext) -> Path:
+        return await process_upscale_batch(self, request, context)
+
+    def upscale_image(self, image: Image.Image, use_tiling: bool, cancelled) -> Image.Image:
+        if use_tiling:
+            return self._upscale_with_tiler(image, cancelled)
+        return self._direct_upscale(image)
+
     def cleanup(self):
-        if hasattr(self, 'model') and self.model is not None:
-            del self.model
-            self.model = None
-        
+        if self.descriptor is not None:
+            try:
+                self.descriptor.to("cpu")
+            except Exception:
+                pass
+        self.descriptor = None
+        gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+
+async def prepare_upscale_manifest(
+    request: UpscaleRequest, context: JobContext, service=None
+) -> tuple[BatchManifest, Path, dict[str, str]]:
+    load_path = Path(request.load_path).resolve()
+    save_path = Path(request.save_path).resolve()
+    format_info = SUPPORTED_OUTPUT_FORMATS[request.format.casefold()]
+    if request.resume_manifest_path:
+        output_manifest = Path(request.resume_manifest_path).resolve()
+        manifest = BatchManifest.load(output_manifest, expected_operation="upscale")
+        manifest.validate_scope(load_path, save_path)
+        manifest.validate_destination_suffixes({format_info["extension"]})
+        manifest.preflight_resume(request.collision_policy)
+        stored_formats = {
+            str(item.metadata["format"]) for item in manifest.items if "format" in item.metadata
+        }
+        stored_backends = {
+            str(item.metadata["backend"]) for item in manifest.items if "backend" in item.metadata
+        }
+        if stored_formats and stored_formats != {request.format}:
+            raise InvalidPathError("Resume output format does not match the manifest")
+        if stored_backends and stored_backends != {request.backend}:
+            raise InvalidPathError("Resume upscale backend does not match the manifest")
+        if service is not None:
+            stored_scales = {
+                int(item.metadata["scale"]) for item in manifest.items if "scale" in item.metadata
+            }
+            if stored_scales and stored_scales != {service.scale}:
+                raise InvalidPathError("Resume model scale does not match the manifest")
+    else:
+        manifest = build_manifest(
+            job_id=context.job_id,
+            operation="upscale",
+            load_path=load_path,
+            save_path=save_path,
+            sources=list_images(load_path),
+            destination_for=lambda source, _index: (
+                save_path / f"{source.stem}{format_info['extension']}"
+            ),
+            collision_policy=request.collision_policy,
+        )
+        for item in manifest.items:
+            item.metadata.update({"backend": request.backend, "format": request.format})
+            if service is not None:
+                item.metadata["scale"] = service.scale
+            elif request.backend == "ncnn":
+                item.metadata["scale"] = request.ncnn_scale
+        output_manifest = manifest_path(save_path, context.job_id)
+    manifest.save(output_manifest)
+    total = len(manifest.items)
+    completed = sum(item.status in {"completed", "skipped"} for item in manifest.items)
+    await context.progress(completed, total, "Upscale manifest ready", output_manifest)
+    return manifest, output_manifest, format_info
+
+
+async def process_upscale_batch(service, request: UpscaleRequest, context: JobContext) -> Path:
+    manifest, output_manifest, format_info = await prepare_upscale_manifest(
+        request, context, service
+    )
+    if request.dry_run:
+        return output_manifest
+
+    total = len(manifest.items)
+    completed = sum(item.status in {"completed", "skipped"} for item in manifest.items)
+    failures = 0
+    for item in manifest.items:
+        if item.status in {"completed", "skipped"}:
+            continue
+        context.raise_if_cancelled()
+        try:
+            image = await asyncio.to_thread(load_rgb_image, Path(item.source))
+            output = await asyncio.to_thread(
+                service.upscale_image, image, request.use_tiling, context.cancelled
+            )
+            await asyncio.to_thread(
+                atomic_save_image,
+                output,
+                Path(item.destination),
+                format_info["pil_format"],
+            )
+            item.status = "completed"
+            item.error = None
+        except JobCancelledError:
+            raise
+        except Exception as exc:
+            item.status = "failed"
+            item.error = str(exc)
+            failures += 1
+        completed += 1
+        manifest.save(output_manifest)
+        await context.progress(
+            completed, total, f"Upscaled {Path(item.source).name}", output_manifest
+        )
+    if failures:
+        raise ProcessingError(f"Upscaling failed for {failures} item(s); see the manifest")
+    return output_manifest

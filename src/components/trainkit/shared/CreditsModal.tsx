@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { X, ExternalLink } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 interface CreditsModalProps {
   isOpen: boolean;
@@ -8,6 +8,10 @@ interface CreditsModalProps {
 }
 
 export function CreditsModal({ isOpen, onClose }: CreditsModalProps) {
+  const [version, setVersion] = useState("");
+  useEffect(() => {
+    void window.electronAPI.getBackendStatus().then((status) => setVersion(status.version));
+  }, []);
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -48,12 +52,8 @@ export function CreditsModal({ isOpen, onClose }: CreditsModalProps) {
         <div className="p-6 space-y-6">
           {/* Developer Info */}
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <img
-                src="https://avatars.githubusercontent.com/u/29302715?v=4"
-                alt="Developer Avatar"
-                className="h-16 w-16 rounded-full border-2 border-primary"
-              />
+            <div className="relative flex h-16 w-16 items-center justify-center rounded-full border-2 border-primary bg-primary/10 text-lg font-bold text-primary">
+              LC
             </div>
             <div className="flex-1">
               <h3 className="text-base font-semibold text-foreground">
@@ -79,16 +79,6 @@ export function CreditsModal({ isOpen, onClose }: CreditsModalProps) {
                   </svg>
                   <span>GitHub</span>
                 </button>
-                {/* <button
-                  onClick={() =>
-                    window.electronAPI.openExternal("no website yet :(")
-                  }
-                  className="flex items-center gap-1.5 px-2 py-1 text-xs bg-accent/10 hover:bg-accent/20 border border-accent/30 text-accent transition-colors"
-                  title="Website"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  <span>Website</span>
-                </button> */}
               </div>
             </div>
           </div>
@@ -136,7 +126,7 @@ export function CreditsModal({ isOpen, onClose }: CreditsModalProps) {
 
           {/* Version */}
           <div className="text-center pt-2 border-t border-border">
-            <p className="text-xs text-muted-foreground">TrainKit v1.0.0</p>
+            <p className="text-xs text-muted-foreground">TrainKit v{version || "..."}</p>
           </div>
         </div>
       </div>

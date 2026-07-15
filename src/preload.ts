@@ -1,99 +1,68 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { ElectronAPI } from "./types/electron";
 
-//Expose Electron APIs to the renderer process.
-contextBridge.exposeInMainWorld("electronAPI", {
-  // Window controls
+const electronAPI = {
   windowMinimize: () => ipcRenderer.invoke("window:minimize"),
   windowMaximize: () => ipcRenderer.invoke("window:maximize"),
   windowClose: () => ipcRenderer.invoke("window:close"),
   windowIsMaximized: () => ipcRenderer.invoke("window:isMaximized"),
 
-  // Backend status
   getBackendStatus: () => ipcRenderer.invoke("backend:status"),
-  onBackendReady: (callback: () => void) => {
-    ipcRenderer.on("backend:ready", callback);
-    return () => ipcRenderer.removeListener("backend:ready", callback);
+  backendRequest: (request) => ipcRenderer.invoke("backend:request", request),
+  onBackendReady: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("backend:ready", handler);
+    return () => ipcRenderer.removeListener("backend:ready", handler);
   },
-
-  // Main process logs
-  onMainLog: (
-    callback: (log: { level: string; message: string; source: string }) => void,
-  ) => {
-    const handler = (
-      _event: unknown,
-      log: { level: string; message: string; source: string },
-    ) => callback(log);
+  onBackendStatus: (callback) => {
+    const handler = (_event: unknown, status: Parameters<typeof callback>[0]) => callback(status);
+    ipcRenderer.on("backend:status-changed", handler);
+    return () => ipcRenderer.removeListener("backend:status-changed", handler);
+  },
+  onBackendEvent: (callback) => {
+    const handler = (_event: unknown, event: Parameters<typeof callback>[0]) => callback(event);
+    ipcRenderer.on("backend:event", handler);
+    return () => ipcRenderer.removeListener("backend:event", handler);
+  },
+  onMainLog: (callback) => {
+    const handler = (_event: unknown, log: Parameters<typeof callback>[0]) => callback(log);
     ipcRenderer.on("main:log", handler);
     return () => ipcRenderer.removeListener("main:log", handler);
   },
 
-  // Splash screen status
-  onSplashStatus: (callback: (status: string) => void) => {
+  onSplashStatus: (callback) => {
     const handler = (_event: unknown, status: string) => callback(status);
     ipcRenderer.on("splash:status", handler);
     return () => ipcRenderer.removeListener("splash:status", handler);
   },
-
-  // Setup mode notification
-  onSetupMode: (callback: () => void) => {
-    ipcRenderer.on("setup:mode", callback);
-    return () => ipcRenderer.removeListener("setup:mode", callback);
+  onSetupMode: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("setup:mode", handler);
+    return () => ipcRenderer.removeListener("setup:mode", handler);
   },
-
-  // Setup progress
-  onSetupProgress: (
-    callback: (data: {
-      status: string;
-      message: string;
-      progress?: number;
-    }) => void,
-  ) => {
-    const handler = (
-      _event: unknown,
-      data: { status: string; message: string; progress?: number },
-    ) => callback(data);
+  onSetupProgress: (callback) => {
+    const handler = (_event: unknown, data: Parameters<typeof callback>[0]) => callback(data);
     ipcRenderer.on("setup:progress", handler);
     return () => ipcRenderer.removeListener("setup:progress", handler);
   },
-
-  // Setup log output
-  onSetupLog: (
-    callback: (data: { message: string; type?: string }) => void,
-  ) => {
-    const handler = (
-      _event: unknown,
-      data: { message: string; type?: string },
-    ) => callback(data);
+  onSetupLog: (callback) => {
+    const handler = (_event: unknown, data: Parameters<typeof callback>[0]) => callback(data);
     ipcRenderer.on("setup:log", handler);
     return () => ipcRenderer.removeListener("setup:log", handler);
   },
 
-  // File/directory dialogs
   openDirectory: () => ipcRenderer.invoke("dialog:openDirectory"),
-  openFile: (options?: {
-    filters?: { name: string; extensions: string[] }[];
-  }) => ipcRenderer.invoke("dialog:openFile", options),
+  openFile: (options) => ipcRenderer.invoke("dialog:openFile", options),
+  pathExists: (path) => ipcRenderer.invoke("fs:pathExists", path),
+  isValidModel: (path) => ipcRenderer.invoke("fs:isValidModel", path),
+  isValidModelFolder: (path) => ipcRenderer.invoke("fs:isValidModelFolder", path),
+  listImages: (directoryPath) => ipcRenderer.invoke("fs:listImages", directoryPath),
+  readImageAsDataUrl: (imagePath) => ipcRenderer.invoke("fs:readImageAsDataUrl", imagePath),
+  openExternal: (url) => ipcRenderer.invoke("shell:openExternal", url),
+  openLogFile: () => ipcRenderer.invoke("log:openFile"),
+  openLogsFolder: () => ipcRenderer.invoke("log:openFolder"),
+  getLogFilePath: () => ipcRenderer.invoke("log:getPath"),
+  getMainLogs: () => ipcRenderer.invoke("log:getEntries"),
+} satisfies ElectronAPI;
 
-  // File system utilities
-  pathExists: (path: string) => ipcRenderer.invoke("fs:pathExists", path),
-  isValidModel: (
-    path: string,
-  ): Promise<{ valid: boolean; name?: string; size?: number }> =>
-    ipcRenderer.invoke("fs:isValidModel", path),
-  isValidModelFolder: (
-    path: string,
-  ): Promise<{ valid: boolean; name?: string }> =>
-    ipcRenderer.invoke("fs:isValidModelFolder", path),
-  listImages: (directoryPath: string): Promise<string[]> =>
-    ipcRenderer.invoke("fs:listImages", directoryPath),
-  readImageAsDataUrl: (imagePath: string): Promise<string | null> =>
-    ipcRenderer.invoke("fs:readImageAsDataUrl", imagePath),
-
-  // External links
-  openExternal: (url: string): Promise<void> =>
-    ipcRenderer.invoke("shell:openExternal", url),
-
-  // Log file
-  openLogFile: (): Promise<void> => ipcRenderer.invoke("log:openFile"),
-  getLogFilePath: (): Promise<string> => ipcRenderer.invoke("log:getPath"),
-});
+contextBridge.exposeInMainWorld("electronAPI", electronAPI);

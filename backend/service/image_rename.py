@@ -1,90 +1,99 @@
-from pathlib import Path
-from typing import Set, Optional, Callable, Awaitable
-import asyncio
-import shutil
-import difPy
-from utils.file_util import is_image
+from __future__ import annotations
 
-# Type alias for async progress callback
-ProgressCallback = Callable[[int, int, str], Awaitable[None]]
+import asyncio
+from pathlib import Path
+
+import difPy
+
+from config.image_formats import SUPPORTED_INPUT_EXTENSIONS
+from core.exceptions import ProcessingError
+from core.jobs import JobContext
+from models import RenameRequest
+from service.manifest import BatchManifest, build_manifest, manifest_path
+from utils.file_util import atomic_copy, is_image
+
 
 class RenameService:
     def __init__(self):
-        self._duplicates_cache: Optional[Set[Path]] = None
-    
-    def list_files(self, load_path: Path):
-        return list(load_path.iterdir())
+        self._duplicates_cache: set[Path] | None = None
 
-    async def rename_sequential(
-        self,
-        load_path: Path,
-        save_path: Path,
-        skip_duplicates: bool = False,
-        progress_callback: Optional[ProgressCallback] = None
-    ):
-        files = list(self.get_valid_files(load_path, skip_duplicates))
-        total = len(files)
-        
-        print(f"Found {total} files to rename")
-        
-        for idx, file in enumerate(files, start=1):
-            if progress_callback:
-                await progress_callback(idx, total, f"Renaming {file.name}")
-            
-            new_name = f"{idx}{file.suffix}"
-            new_path = save_path / new_name
-            
-            # Run I/O in executor to not block event loop
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, shutil.copy2, file, new_path)
-        
-        print(f"Rename complete! Processed {total} files")
-    
-    async def rename_stem_sequential(
-        self,
-        load_path: Path,
-        save_path: Path,
-        skip_duplicates: bool = False,
-        progress_callback: Optional[ProgressCallback] = None
-    ):
-        files = list(self.get_valid_files(load_path, skip_duplicates))
-        total = len(files)
-        
-        print(f"Found {total} files to rename")
-        
-        for idx, file in enumerate(files, start=1):
-            if progress_callback:
-                await progress_callback(idx, total, f"Renaming {file.name}")
-            
-            new_name = f"{file.stem}_{idx}{file.suffix}"
-            new_path = save_path / new_name
-            
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, shutil.copy2, file, new_path)
-        
-        print(f"Rename complete! Processed {total} files")
-                
-    def skip_duplicates(self, load_path: Path) -> Set[Path]:
+    async def process(self, request: RenameRequest, context: JobContext) -> Path:
+        load_path = Path(request.load_path).resolve()
+        save_path = Path(request.save_path).resolve()
+        if request.resume_manifest_path:
+            output_manifest = Path(request.resume_manifest_path).resolve()
+            manifest = BatchManifest.load(output_manifest, expected_operation="rename")
+            manifest.validate_scope(load_path, save_path)
+            manifest.validate_destination_suffixes(SUPPORTED_INPUT_EXTENSIONS)
+            manifest.preflight_resume(request.collision_policy)
+        else:
+            duplicates: set[Path] = set()
+            if request.skip_duplicates:
+                duplicates = await asyncio.to_thread(self.skip_duplicates, load_path)
+            sources = [
+                path
+                for path in load_path.iterdir()
+                if path.is_file() and is_image(path) and path not in duplicates
+            ]
+
+            def destination(source: Path, index: int) -> Path:
+                number = str(index).zfill(request.zero_pad)
+                if request.mode == "sequential":
+                    name = f"{number}{source.suffix.casefold()}"
+                else:
+                    name = f"{source.stem}_{number}{source.suffix.casefold()}"
+                return save_path / name
+
+            manifest = build_manifest(
+                job_id=context.job_id,
+                operation="rename",
+                load_path=load_path,
+                save_path=save_path,
+                sources=sources,
+                destination_for=destination,
+                collision_policy=request.collision_policy,
+            )
+            output_manifest = manifest_path(save_path, context.job_id)
+        manifest.save(output_manifest)
+        total = len(manifest.items)
+        completed = sum(item.status in {"completed", "skipped"} for item in manifest.items)
+        await context.progress(completed, total, "Rename manifest ready", output_manifest)
+        if request.dry_run:
+            return output_manifest
+
+        failures = 0
+        for item in manifest.items:
+            if item.status in {"completed", "skipped"}:
+                continue
+            context.raise_if_cancelled()
+            try:
+                await asyncio.to_thread(atomic_copy, Path(item.source), Path(item.destination))
+                item.status = "completed"
+                item.error = None
+            except Exception as exc:
+                item.status = "failed"
+                item.error = str(exc)
+                failures += 1
+            completed += 1
+            manifest.save(output_manifest)
+            await context.progress(
+                completed, total, f"Renamed {Path(item.source).name}", output_manifest
+            )
+        if failures:
+            raise ProcessingError(f"Rename failed for {failures} item(s); see the manifest")
+        return output_manifest
+
+    def skip_duplicates(self, load_path: Path) -> set[Path]:
         if self._duplicates_cache is not None:
             return self._duplicates_cache
-        
         dif = difPy.build(str(load_path), recursive=False)
         search = difPy.search(dif)
-        
-        duplicates = set()
-        for dupe in search.result.values():
-            for entry in dupe:
-                duplicates.add(Path(entry[0]))
-        
+        duplicates: set[Path] = set()
+        for duplicate_group in search.result.values():
+            for entry in duplicate_group:
+                duplicates.add(Path(entry[0]).resolve())
         self._duplicates_cache = duplicates
         return duplicates
-    
-    def get_valid_files(self, load_path: Path, skip_duplicates: bool = False):
-        duplicates = self.skip_duplicates(load_path) if skip_duplicates else set()
-        
-        for file in load_path.iterdir():
-            if file.is_file() and is_image(file) and file not in duplicates:
-                yield file
-    
+
     def clear_cache(self):
         self._duplicates_cache = None
