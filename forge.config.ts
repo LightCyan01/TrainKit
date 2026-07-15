@@ -1,5 +1,4 @@
 import type { ForgeConfig } from "@electron-forge/shared-types";
-import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
@@ -75,13 +74,7 @@ const config: ForgeConfig = {
     },
   },
   rebuildConfig: {},
-  makers: [
-    new MakerSquirrel({
-      setupIcon: iconPath + ".ico",
-      ...(windowsSign ? { windowsSign } : {}),
-    }),
-    new MakerZIP({}, ["win32"]),
-  ],
+  makers: [new MakerZIP({}, ["win32"])],
   plugins: [
     new VitePlugin({
       build: [

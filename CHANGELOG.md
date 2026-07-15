@@ -2,6 +2,27 @@
 
 All notable TrainKit changes are documented here. TrainKit follows semantic versioning.
 
+## [1.2.1] - 2026-07-15
+
+TrainKit 1.2.1 fixes NCNN graph compatibility, makes manifests opt-in, and adds individual-image workflows across every operation.
+
+### Added
+
+- Added individual-image selection and processing alongside the existing folder workflow for captioning, upscaling, tagging, and renaming.
+
+### Changed
+
+- NCNN input and output blobs are now discovered from the loaded graph automatically. Manual blob fields remain available only as overrides for graphs with multiple inputs or outputs.
+- Resumable manifest files are now opt-in for normal runs. Dry runs still create a manifest, and resumed jobs continue updating the selected manifest.
+- The matching NCNN `.bin` file is now discovered beside its `.param` graph unless an override is selected.
+- The Windows ZIP is now the sole release format and standard distribution; the Squirrel installer and its runtime hooks were removed.
+- Tagged releases can publish unsigned builds with an explicit SmartScreen/antivirus warning, while still signing and verifying the executable when both certificate secrets are configured.
+
+### Fixed
+
+- Fixed single-input NCNN graphs failing with `NCNN input blob not found: in0` when their tensor used another name.
+- Kept the first per-image processing error visible when manifest persistence is disabled.
+
 ## [1.2.0] - 2026-07-14
 
 TrainKit 1.2.0 completes the original processing roadmap, adds resumable and collision-safe batch execution, hardens the Electron/backend boundary, and restores a self-contained portable runtime layout.
@@ -148,6 +169,7 @@ TrainKit 1.2.0 completes the original processing roadmap, adds resumable and col
 
 - Initial TrainKit release with local image captioning, Spandrel upscaling, batch renaming, and an Electron desktop interface.
 
+[1.2.1]: https://github.com/LightCyan01/TrainKit/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/LightCyan01/TrainKit/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/LightCyan01/TrainKit/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/LightCyan01/TrainKit/releases/tag/v1.0.0

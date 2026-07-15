@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { cn } from "@/lib/utils";
-import { Folder } from "lucide-react";
+import { FileImage, Folder } from "lucide-react";
 
 interface InputProps {
   label: string;
@@ -9,6 +9,7 @@ interface InputProps {
   placeholder?: string;
   type?: "text" | "path";
   onBrowse?: () => void;
+  onBrowseFile?: () => void;
   disabled?: boolean;
 }
 
@@ -19,6 +20,7 @@ export const Input = memo(function Input({
   placeholder,
   type = "text",
   onBrowse,
+  onBrowseFile,
   disabled = false,
 }: InputProps) {
   return (
@@ -47,25 +49,49 @@ export const Input = memo(function Input({
               "transition-all duration-200",
               "disabled:opacity-50 disabled:cursor-not-allowed",
               type === "path" && "font-mono text-xs",
-              type === "path" && onBrowse && "pr-12",
+              type === "path" && (onBrowse || onBrowseFile) && "pr-12",
+              type === "path" && onBrowse && onBrowseFile && "pr-20",
             )}
           />
-          {type === "path" && onBrowse && (
-            <button
-              type="button"
-              onClick={onBrowse}
-              disabled={disabled}
-              className={cn(
-                "absolute right-0 top-0 bottom-0 px-3",
-                "flex items-center justify-center",
-                "border-l border-border bg-secondary/50",
-                "text-muted-foreground hover:text-primary hover:bg-primary/10",
-                "transition-colors",
-                "disabled:opacity-50 disabled:cursor-not-allowed",
+          {type === "path" && (onBrowse || onBrowseFile) && (
+            <div className="absolute right-0 top-0 bottom-0 flex">
+              {onBrowse && (
+                <button
+                  type="button"
+                  onClick={onBrowse}
+                  disabled={disabled}
+                  aria-label={`Select folder for ${label.toLowerCase()}`}
+                  title="Select folder"
+                  className={cn(
+                    "flex items-center justify-center px-3",
+                    "border-l border-border bg-secondary/50",
+                    "text-muted-foreground hover:text-primary hover:bg-primary/10",
+                    "transition-colors",
+                    "disabled:opacity-50 disabled:cursor-not-allowed",
+                  )}
+                >
+                  <Folder className="h-4 w-4" />
+                </button>
               )}
-            >
-              <Folder className="h-4 w-4" />
-            </button>
+              {onBrowseFile && (
+                <button
+                  type="button"
+                  onClick={onBrowseFile}
+                  disabled={disabled}
+                  aria-label={`Select individual image for ${label.toLowerCase()}`}
+                  title="Select individual image"
+                  className={cn(
+                    "flex items-center justify-center px-3",
+                    "border-l border-border bg-secondary/50",
+                    "text-muted-foreground hover:text-primary hover:bg-primary/10",
+                    "transition-colors",
+                    "disabled:opacity-50 disabled:cursor-not-allowed",
+                  )}
+                >
+                  <FileImage className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>

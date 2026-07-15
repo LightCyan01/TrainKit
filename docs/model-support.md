@@ -24,14 +24,15 @@ Legacy `.pt`, `.pth`, and `.ckpt` files can execute pickle payloads and are not 
 NCNN uses the official Python bindings. Supply:
 
 - a text `.param` graph;
-- its `.bin` weights file;
-- the input and output blob names (defaults: `in0` and `out0`);
+- its `.bin` weights file, or keep it beside the graph with the same stem;
 - the integer model scale (default: 4);
 - whether to request Vulkan compute.
 
-If the `.bin` path is omitted at the API layer, TrainKit looks beside the graph with the same stem. The desktop UI requires both files to be selected.
+TrainKit reads `input_names()` and `output_names()` from the loaded NCNN graph. A graph with one input and one output needs no blob configuration. Blob overrides are available for models exposing multiple inputs or outputs; an invalid override reports the discovered names. If the `.bin` path is omitted, TrainKit looks beside the graph with the same stem.
 
-The current generic adapter feeds contiguous RGB CHW float32 values normalized to `0..1`. It accepts CHW output with one, three, or four channels, keeps RGB, and treats output maxima up to `1.5` as normalized values. Choose or export an NCNN image upscaler with that contract. Models requiring BGR input, custom mean/normalization, multiple inputs, recurrent state, or special pre/post-processing need a dedicated adapter.
+Blob names identify tensor edges in an NCNN graph. The extractor needs them because NCNN supports general graphs with more than one input or output, even though image upscalers normally expose only one of each.
+
+The current generic adapter feeds contiguous RGB CHW float32 values normalized to `0..1`. It accepts CHW output with one, three, or four channels, keeps RGB, and treats output maxima up to `1.5` as normalized values. Choose or export an NCNN image upscaler with that contract. Models requiring BGR input, custom mean/normalization, multiple simultaneous inputs, recurrent state, or special pre/post-processing need a dedicated adapter.
 
 Vulkan availability depends on the NCNN wheel, GPU, and driver. Disable Vulkan to use CPU inference. Tiling reduces peak memory and checks cancellation between tiles.
 

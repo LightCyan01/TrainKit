@@ -9,12 +9,9 @@ import {
 } from "electron";
 import path from "node:path";
 import fs from "node:fs";
-import started from "electron-squirrel-startup";
 import { getBackendManager, BackendManager } from "./backend-manager";
 import { getSetupManager, type SetupProgress } from "./setup-manager";
 import { getLogger, closeLogger } from "./logger";
-
-if (started) app.quit();
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) app.quit();
@@ -382,13 +379,20 @@ ipcMain.handle("fs:isValidModelFolder", async (event, folderPath: string) => {
     return { valid: false };
   }
 });
-ipcMain.handle("fs:listImages", async (event, directoryPath: string) => {
+ipcMain.handle("fs:listImages", async (event, sourcePath: string) => {
   trustedSender(event);
-  if (!isGranted(directoryPath)) return [];
+  if (!isGranted(sourcePath)) return [];
   try {
-    return (await fs.promises.readdir(directoryPath))
+    const stats = await fs.promises.stat(sourcePath);
+    if (stats.isFile()) {
+      return IMAGE_EXTENSIONS.has(path.extname(sourcePath).toLowerCase())
+        ? [sourcePath]
+        : [];
+    }
+    if (!stats.isDirectory()) return [];
+    return (await fs.promises.readdir(sourcePath))
       .filter((file) => IMAGE_EXTENSIONS.has(path.extname(file).toLowerCase()))
-      .map((file) => path.join(directoryPath, file))
+      .map((file) => path.join(sourcePath, file))
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
   } catch {
     return [];

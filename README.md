@@ -23,29 +23,28 @@
   <a href="docs/architecture.md">Architecture</a>
 </p>
 
-TrainKit prepares image datasets without uploading them to a hosted service. Every batch is deterministic, cancellable, collision-aware, and recorded in a resumable manifest.
+TrainKit prepares individual images or complete image folders without uploading them to a hosted service. Every run is deterministic, cancellable, and collision-aware; resumable manifest files are optional.
 
-## What's new in 1.2.0
+## What's new in 1.2.1
 
-- NCNN `.param` + `.bin` upscaling with CPU/Vulkan and tiled inference.
-- Local image tagging with JSON, training-text, and paired outputs.
-- Standard multimodal, BLIP, and InstructBLIP caption adapters with auto-detection.
-- Dry runs, collision policies, atomic manifests, cancellation, and failed-item resume across every operation.
-- A self-contained packaged Python runtime and logs stored beside the application.
-- A hardened Electron/backend boundary plus signed-release, checksum, and provenance automation.
+- Automatic NCNN input/output blob discovery instead of hard-coded `in0` and `out0` names.
+- Individual-image selection for captioning, upscaling, tagging, and renaming.
+- Manifests disabled by default, with explicit save, dry-run, and resume options.
+- First processing errors remain visible even when no manifest is written.
+- A single standard Windows ZIP distribution with no installer.
 
-See the [complete 1.2.0 changelog](CHANGELOG.md#120---2026-07-14) for fixes, security changes, migration notes, and verification results.
+See the [complete 1.2.1 changelog](CHANGELOG.md#121---2026-07-15) for details.
 
 ## Features
 
 - **Captioning:** local standard Transformers multimodal-chat, BLIP, and InstructBLIP models; auto-detection, explicit preload/unload, prompt control, and token-level cancellation.
-- **Upscaling:** safe `.safetensors` models through Spandrel, or NCNN `.param` + `.bin` models through the Python bindings with CPU/Vulkan and tiled inference.
+- **Upscaling:** safe `.safetensors` models through Spandrel, or NCNN `.param` + `.bin` models through the Python bindings with automatic blob discovery, CPU/Vulkan, and tiled inference.
 - **Tagging:** local Hugging Face image-classification models with threshold/top-K controls and scored JSON, training-text, or paired sidecars.
 - **Renaming:** natural input ordering, configurable zero padding, optional visual-duplicate filtering, and atomic copies.
-- **Safe batch behavior:** dry-run manifests, `fail`/`skip`/`rename`/`overwrite` collision policies, per-file status, atomic output replacement, and failed-item resume.
+- **Safe processing:** individual-image or folder input, `fail`/`skip`/`rename`/`overwrite` collision policies, per-file status, atomic output replacement, and optional resumable manifests.
 - **Hardened desktop boundary:** sandboxed renderers, narrow IPC, user-granted file capabilities, an authenticated ephemeral loopback backend, and restricted navigation.
 
-Input images can be PNG, JPEG, BMP, or WebP. Upscaled output can be PNG, JPEG, BMP, or WebP.
+Input can be one PNG, JPEG, BMP, or WebP image or a folder containing those formats. Upscaled output can be PNG, JPEG, BMP, or WebP.
 
 ## Install a release
 
@@ -54,7 +53,7 @@ TrainKit currently targets 64-bit Windows 10/11. Before the first launch, instal
 1. [uv](https://docs.astral.sh/uv/getting-started/installation/)
 2. [Microsoft Visual C++ Redistributable x64](https://aka.ms/vs/17/release/vc_redist.x64.exe)
 
-Download the signed installer or portable archive from [GitHub Releases](https://github.com/LightCyan01/TrainKit/releases). On first launch, TrainKit uses the committed `uv.lock` to install Python 3.12 and the backend dependencies directly under `resources/backend` in the TrainKit folder. Setup downloads and temporary files stay there and are removed after a successful install. This requires a network connection and several gigabytes of free space.
+Download the Windows ZIP from [GitHub Releases](https://github.com/LightCyan01/TrainKit/releases), extract the entire archive to a writable folder on the drive where you want TrainKit stored, and run `TrainKit.exe`. The current release is unsigned, so Windows SmartScreen or antivirus software may warn; download only from the GitHub release and verify `SHA256SUMS.txt`. On first launch, TrainKit uses the committed `uv.lock` to install Python 3.12 and the backend dependencies directly under `resources/backend` in the TrainKit folder. Setup downloads and temporary files stay there and are removed after a successful install. This requires a network connection and several gigabytes of free space.
 
 Persistent session logs are written to `logs` beside `TrainKit.exe`. The **Logs** panel shows the exact current path and can open either the folder or current log. Older builds used `%APPDATA%\TrainKit\backend-runtime`; a successful self-contained setup removes that obsolete generated runtime.
 
@@ -81,23 +80,23 @@ npm run package
 npm run verify:package
 ```
 
-`npm run make` creates the Squirrel installer and portable ZIP. Local packages are unsigned unless the signing environment variables described in [CONTRIBUTING.md](CONTRIBUTING.md) are set.
+`npm run make` creates the standard Windows ZIP. Local packages are unsigned unless the signing environment variables described in [CONTRIBUTING.md](CONTRIBUTING.md) are set.
 
-## Using batch manifests
+## Using optional manifests
 
-Each new job writes a manifest to:
+Normal runs do not write a manifest. Enable **Save resumable manifest** when you want progress saved to:
 
 ```text
 <output>/.trainkit/manifests/<job-id>.json
 ```
 
-Use **Dry run** to preflight source ordering and destinations without processing. A resume uses the same operation and the same input/output directories, preserves completed and skipped items, and retries failed items. Manifests are treated as untrusted input: paths outside the selected roots are rejected.
+Dry runs always write a manifest because the plan is their output. A resume uses the same operation and input/output paths, preserves completed and skipped items, retries failed items, and updates the selected manifest. Manifests are treated as untrusted input: paths outside the selected roots are rejected.
 
 See [model support](docs/model-support.md) for model layouts and NCNN assumptions, [architecture](docs/architecture.md) for the desktop/backend trust boundaries, and the [changelog](CHANGELOG.md) for complete release history.
 
 ## Project status
 
-Version 1.2.0 completes the original NCNN, additional caption-adapter, and image-tagging roadmap. New feature proposals and model-compatibility reports are welcome through GitHub issues.
+Version 1.2.1 completes the original processing roadmap and improves NCNN compatibility, input selection, and output control. New feature proposals and model-compatibility reports are welcome through GitHub issues.
 
 ## Contributing and security
 

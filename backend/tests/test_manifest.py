@@ -99,6 +99,25 @@ def test_new_manifest_rejects_destination_outside_output_root(tmp_path: Path):
         )
 
 
+def test_manifest_accepts_and_validates_a_single_input_file(tmp_path: Path):
+    source = tmp_path / "image.png"
+    output = tmp_path / "output"
+    source.write_bytes(b"x")
+
+    manifest = build_manifest(
+        job_id="job",
+        operation="caption",
+        load_path=source,
+        save_path=output,
+        sources=[source],
+        destination_for=lambda item, _index: output / f"{item.stem}.txt",
+        collision_policy="fail",
+    )
+
+    manifest.validate_scope(source, output)
+    assert [Path(item.source) for item in manifest.items] == [source]
+
+
 def test_overwrite_never_replaces_another_source_file(tmp_path: Path):
     dataset = tmp_path / "dataset"
     dataset.mkdir()

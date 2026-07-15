@@ -54,13 +54,15 @@ def is_image(file_path: Path) -> bool:
         return False
 
 
-def list_images(directory: Path) -> list[Path]:
-    validate_directory(directory)
+def list_images(source: Path) -> list[Path]:
     from service.manifest import sorted_files
 
+    if source.is_file():
+        return [validate_image_path(source)]
+    validate_directory(source)
     return sorted_files(
         path
-        for path in directory.iterdir()
+        for path in source.iterdir()
         if path.is_file() and path.suffix.casefold() in SUPPORTED_INPUT_EXTENSIONS
     )
 

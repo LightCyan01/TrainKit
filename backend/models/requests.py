@@ -15,6 +15,7 @@ class BatchRequest(BaseModel):
     save_path: str
     collision_policy: CollisionPolicy = "fail"
     dry_run: bool = False
+    save_manifest: bool = False
     resume_manifest_path: str | None = None
 
 
@@ -32,8 +33,8 @@ class UpscaleRequest(BatchRequest):
     tile_size: int = Field(default=512, ge=64, le=4096)
     tile_overlap: int = Field(default=16, ge=0, le=512)
     ncnn_model_bin_path: str | None = None
-    ncnn_input_blob: str = "in0"
-    ncnn_output_blob: str = "out0"
+    ncnn_input_blob: str | None = None
+    ncnn_output_blob: str | None = None
     ncnn_scale: int = Field(default=4, ge=1, le=16)
     ncnn_use_vulkan: bool = True
 
@@ -69,8 +70,8 @@ class ModelInfoRequest(BaseModel):
     backend: Literal["spandrel", "ncnn"] = "spandrel"
     model_bin_path: str | None = None
     scale: int = Field(default=4, ge=1, le=16)
-    input_blob: str = "in0"
-    output_blob: str = "out0"
+    input_blob: str | None = None
+    output_blob: str | None = None
     use_vulkan: bool = True
 
 

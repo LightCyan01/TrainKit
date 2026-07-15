@@ -47,7 +47,7 @@ class ImageCaptioningService:
         if not self.loaded:
             await asyncio.to_thread(self.adapter.load)
 
-    async def process(self, request: CaptionRequest, context: JobContext) -> Path:
+    async def process(self, request: CaptionRequest, context: JobContext) -> Path | None:
         load_path = Path(request.load_path).resolve()
         save_path = Path(request.save_path).resolve()
         if request.resume_manifest_path:
@@ -66,16 +66,23 @@ class ImageCaptioningService:
                 destination_for=lambda source, _index: save_path / f"{source.stem}.txt",
                 collision_policy=request.collision_policy,
             )
-            output_manifest = manifest_path(save_path, context.job_id)
-        manifest.save(output_manifest)
+            output_manifest = (
+                manifest_path(save_path, context.job_id)
+                if request.save_manifest or request.dry_run
+                else None
+            )
+        if output_manifest is not None:
+            manifest.save(output_manifest)
         total = len(manifest.items)
         completed = sum(item.status in {"completed", "skipped"} for item in manifest.items)
-        await context.progress(completed, total, "Caption manifest ready", output_manifest)
+        message = "Caption manifest ready" if output_manifest is not None else "Caption plan ready"
+        await context.progress(completed, total, message, output_manifest)
         if request.dry_run:
             return output_manifest
         await self.load()
 
         failures = 0
+        first_error: str | None = None
         for item in manifest.items:
             if item.status in {"completed", "skipped"}:
                 continue
@@ -94,13 +101,17 @@ class ImageCaptioningService:
                 item.status = "failed"
                 item.error = str(exc)
                 failures += 1
+                first_error = first_error or f"{Path(item.source).name}: {str(exc)[:500]}"
             completed += 1
-            manifest.save(output_manifest)
+            if output_manifest is not None:
+                manifest.save(output_manifest)
             await context.progress(
                 completed, total, f"Captioned {Path(item.source).name}", output_manifest
             )
         if failures:
-            raise ProcessingError(f"Captioning failed for {failures} item(s); see the manifest")
+            detail = f": {first_error}" if first_error else ""
+            suffix = "; see the manifest" if output_manifest is not None else ""
+            raise ProcessingError(f"Captioning failed for {failures} item(s){detail}{suffix}")
         return output_manifest
 
     def cleanup(self):

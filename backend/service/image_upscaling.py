@@ -100,7 +100,7 @@ class ImageUpscaleService:
     def _direct_upscale(self, image: Image.Image) -> Image.Image:
         return self._process_tile(image)
 
-    async def process(self, request: UpscaleRequest, context: JobContext) -> Path:
+    async def process(self, request: UpscaleRequest, context: JobContext) -> Path | None:
         return await process_upscale_batch(self, request, context)
 
     def upscale_image(self, image: Image.Image, use_tiling: bool, cancelled) -> Image.Image:
@@ -122,7 +122,7 @@ class ImageUpscaleService:
 
 async def prepare_upscale_manifest(
     request: UpscaleRequest, context: JobContext, service=None
-) -> tuple[BatchManifest, Path, dict[str, str]]:
+) -> tuple[BatchManifest, Path | None, dict[str, str]]:
     load_path = Path(request.load_path).resolve()
     save_path = Path(request.save_path).resolve()
     format_info = SUPPORTED_OUTPUT_FORMATS[request.format.casefold()]
@@ -166,15 +166,23 @@ async def prepare_upscale_manifest(
                 item.metadata["scale"] = service.scale
             elif request.backend == "ncnn":
                 item.metadata["scale"] = request.ncnn_scale
-        output_manifest = manifest_path(save_path, context.job_id)
-    manifest.save(output_manifest)
+        output_manifest = (
+            manifest_path(save_path, context.job_id)
+            if request.save_manifest or request.dry_run
+            else None
+        )
+    if output_manifest is not None:
+        manifest.save(output_manifest)
     total = len(manifest.items)
     completed = sum(item.status in {"completed", "skipped"} for item in manifest.items)
-    await context.progress(completed, total, "Upscale manifest ready", output_manifest)
+    message = "Upscale manifest ready" if output_manifest is not None else "Upscale plan ready"
+    await context.progress(completed, total, message, output_manifest)
     return manifest, output_manifest, format_info
 
 
-async def process_upscale_batch(service, request: UpscaleRequest, context: JobContext) -> Path:
+async def process_upscale_batch(
+    service, request: UpscaleRequest, context: JobContext
+) -> Path | None:
     manifest, output_manifest, format_info = await prepare_upscale_manifest(
         request, context, service
     )
@@ -184,6 +192,7 @@ async def process_upscale_batch(service, request: UpscaleRequest, context: JobCo
     total = len(manifest.items)
     completed = sum(item.status in {"completed", "skipped"} for item in manifest.items)
     failures = 0
+    first_error: str | None = None
     for item in manifest.items:
         if item.status in {"completed", "skipped"}:
             continue
@@ -207,11 +216,15 @@ async def process_upscale_batch(service, request: UpscaleRequest, context: JobCo
             item.status = "failed"
             item.error = str(exc)
             failures += 1
+            first_error = first_error or f"{Path(item.source).name}: {str(exc)[:500]}"
         completed += 1
-        manifest.save(output_manifest)
+        if output_manifest is not None:
+            manifest.save(output_manifest)
         await context.progress(
             completed, total, f"Upscaled {Path(item.source).name}", output_manifest
         )
     if failures:
-        raise ProcessingError(f"Upscaling failed for {failures} item(s); see the manifest")
+        detail = f": {first_error}" if first_error else ""
+        suffix = "; see the manifest" if output_manifest is not None else ""
+        raise ProcessingError(f"Upscaling failed for {failures} item(s){detail}{suffix}")
     return output_manifest

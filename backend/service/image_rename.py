@@ -10,14 +10,14 @@ from core.exceptions import ProcessingError
 from core.jobs import JobContext
 from models import RenameRequest
 from service.manifest import BatchManifest, build_manifest, manifest_path
-from utils.file_util import atomic_copy, is_image
+from utils.file_util import atomic_copy, list_images
 
 
 class RenameService:
     def __init__(self):
         self._duplicates_cache: set[Path] | None = None
 
-    async def process(self, request: RenameRequest, context: JobContext) -> Path:
+    async def process(self, request: RenameRequest, context: JobContext) -> Path | None:
         load_path = Path(request.load_path).resolve()
         save_path = Path(request.save_path).resolve()
         if request.resume_manifest_path:
@@ -28,13 +28,9 @@ class RenameService:
             manifest.preflight_resume(request.collision_policy)
         else:
             duplicates: set[Path] = set()
-            if request.skip_duplicates:
+            if request.skip_duplicates and load_path.is_dir():
                 duplicates = await asyncio.to_thread(self.skip_duplicates, load_path)
-            sources = [
-                path
-                for path in load_path.iterdir()
-                if path.is_file() and is_image(path) and path not in duplicates
-            ]
+            sources = [path for path in list_images(load_path) if path not in duplicates]
 
             def destination(source: Path, index: int) -> Path:
                 number = str(index).zfill(request.zero_pad)
@@ -53,15 +49,22 @@ class RenameService:
                 destination_for=destination,
                 collision_policy=request.collision_policy,
             )
-            output_manifest = manifest_path(save_path, context.job_id)
-        manifest.save(output_manifest)
+            output_manifest = (
+                manifest_path(save_path, context.job_id)
+                if request.save_manifest or request.dry_run
+                else None
+            )
+        if output_manifest is not None:
+            manifest.save(output_manifest)
         total = len(manifest.items)
         completed = sum(item.status in {"completed", "skipped"} for item in manifest.items)
-        await context.progress(completed, total, "Rename manifest ready", output_manifest)
+        message = "Rename manifest ready" if output_manifest is not None else "Rename plan ready"
+        await context.progress(completed, total, message, output_manifest)
         if request.dry_run:
             return output_manifest
 
         failures = 0
+        first_error: str | None = None
         for item in manifest.items:
             if item.status in {"completed", "skipped"}:
                 continue
@@ -74,13 +77,17 @@ class RenameService:
                 item.status = "failed"
                 item.error = str(exc)
                 failures += 1
+                first_error = first_error or f"{Path(item.source).name}: {str(exc)[:500]}"
             completed += 1
-            manifest.save(output_manifest)
+            if output_manifest is not None:
+                manifest.save(output_manifest)
             await context.progress(
                 completed, total, f"Renamed {Path(item.source).name}", output_manifest
             )
         if failures:
-            raise ProcessingError(f"Rename failed for {failures} item(s); see the manifest")
+            detail = f": {first_error}" if first_error else ""
+            suffix = "; see the manifest" if output_manifest is not None else ""
+            raise ProcessingError(f"Rename failed for {failures} item(s){detail}{suffix}")
         return output_manifest
 
     def skip_duplicates(self, load_path: Path) -> set[Path]:
