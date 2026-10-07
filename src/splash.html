@@ -48,24 +48,23 @@
 
       .window-controls {
         position: absolute;
-        top: 10px;
-        left: 10px;
+        top: 8px;
+        right: 8px;
         z-index: 1;
         display: flex;
-        gap: 6px;
+        gap: 2px;
         -webkit-app-region: no-drag;
       }
 
       .window-control {
         display: flex;
         align-items: center;
-        gap: 6px;
-        padding: 6px 8px;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
         background: transparent;
-        border: 1px solid #27272a;
+        border: none;
         color: #a1a1aa;
-        font: inherit;
-        font-size: 11px;
         cursor: pointer;
         border-radius: 4px;
       }
@@ -82,7 +81,6 @@
 
       .window-control.quit:hover {
         color: #f97316;
-        border-color: #f97316;
       }
 
       .logo-container {
@@ -317,10 +315,14 @@
   <body>
     <div class="window-controls" aria-label="Window controls">
       <button class="window-control" id="minimizeBtn" type="button" aria-label="Minimize" title="Minimize">
-        <span aria-hidden="true">−</span> Minimize
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M1 6h10" />
+        </svg>
       </button>
       <button class="window-control quit" id="quitBtn" type="button" aria-label="Quit TrainKit" title="Quit TrainKit">
-        <span aria-hidden="true">×</span> Quit
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="m2 2 8 8m0-8-8 8" />
+        </svg>
       </button>
     </div>
     <div class="container" id="container">

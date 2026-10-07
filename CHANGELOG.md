@@ -31,7 +31,7 @@ TrainKit 1.3.0 adds Claude and OpenAI captioning through your own API keys and i
 - Single-channel NCNN output is converted to RGB and invalid tiled overlap is rejected before processing.
 - Failed atomic text writes remove their temporary files, and damaged provider records do not discard another provider's remembered key.
 - Development setup preserves test tools and excludes backend environments from frontend file watching.
-- Setup and startup windows have top-left minimize and quit buttons. Minimizing setup keeps the main window minimized when it opens; quitting stops setup.
+- Setup and startup windows have small top-right minimize and quit icons. Minimizing setup keeps the main window minimized when it opens; quitting stops setup.
 
 ## [1.2.1] - 2026-07-15
 
