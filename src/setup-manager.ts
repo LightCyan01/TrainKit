@@ -140,7 +140,7 @@ export class SetupManager {
       });
       await this.runCommand(
         "uv",
-        ["sync", "--project", this.backendPath, "--locked", "--no-dev"],
+        ["sync", "--project", this.backendPath, "--locked", ...(app.isPackaged ? ["--no-dev"] : [])],
         this.backendPath,
         onProgress,
         venvPath,
@@ -291,6 +291,7 @@ export class SetupManager {
       throw new Error(
         `TrainKit cannot write beside its packaged backend (${this.runtimePath}). ` +
           `Move or extract TrainKit to a writable folder and try again. ${message}`,
+        { cause: error },
       );
     } finally {
       fs.rmSync(probe, { force: true });

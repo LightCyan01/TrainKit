@@ -12,6 +12,9 @@ import fs from "node:fs";
 import { getBackendManager, BackendManager } from "./backend-manager";
 import { getSetupManager, type SetupProgress } from "./setup-manager";
 import { getLogger, closeLogger } from "./logger";
+import { ProviderSettingsStore, testProviderKey } from "./provider-settings";
+import { isCloudProvider, type CloudProvider, type ProviderUpdate } from "./types/providers";
+import { canonicalPath } from "./path-grants";
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) app.quit();
@@ -65,6 +68,11 @@ let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 let logCleanup: (() => void) | null = null;
 let quitting = false;
+let providerSettings: ProviderSettingsStore | null = null;
+
+function getProviderSettings() {
+  return providerSettings ??= new ProviderSettingsStore(path.join(app.getPath("userData"), "provider-settings.json"));
+}
 
 function trustedSender(event: IpcMainInvokeEvent, allowSplash = false) {
   const sender = event.sender;
@@ -72,15 +80,6 @@ function trustedSender(event: IpcMainInvokeEvent, allowSplash = false) {
     mainWindow?.webContents === sender ||
     (allowSplash && splashWindow?.webContents === sender);
   if (!trusted) throw new Error("Rejected IPC from an untrusted renderer");
-}
-
-function canonicalPath(value: string): string {
-  const resolved = path.resolve(value);
-  try {
-    return fs.realpathSync.native(resolved);
-  } catch {
-    return resolved;
-  }
 }
 
 function grantRoot(value: string): string {
@@ -171,7 +170,7 @@ async function createSplashWindow() {
     backgroundColor: "#0a0a0a",
     show: false,
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -200,7 +199,7 @@ function createWindow() {
     titleBarStyle: "hidden",
     backgroundColor: "#0f0f0f",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -216,8 +215,12 @@ function createWindow() {
     );
   }
   mainWindow.once("ready-to-show", () => {
-    mainWindow?.show();
-    mainWindow?.focus();
+    if (splashWindow?.isMinimized()) {
+      mainWindow?.showInactive();
+      mainWindow?.minimize();
+    } else {
+      mainWindow?.show();
+    }
     splashWindow?.close();
   });
   mainWindow.webContents.once("did-finish-load", () => {
@@ -274,13 +277,39 @@ ipcMain.handle(
       throw new Error("Invalid backend request");
     }
     validateBackendPaths(request.path, request.body);
+    if (request.path === "/caption" && request.method === "POST") {
+      const body = request.body as Record<string, unknown>;
+      if (isCloudProvider(body.provider)) {
+        const key = getProviderSettings().key(body.provider);
+        if (!key && !body.dry_run) throw new Error("Add this provider's API key in the API tab first.");
+        return backendManager.request(request.path, request.method, request.body, key ? { "x-trainkit-provider-key": key } : {});
+      }
+    }
     return backendManager.request(request.path, request.method, request.body);
   },
 );
 
+ipcMain.handle("providers:get", (event) => {
+  trustedSender(event);
+  return getProviderSettings().status();
+});
+ipcMain.handle("providers:set", (event, provider: CloudProvider, update: ProviderUpdate) => {
+  trustedSender(event);
+  return getProviderSettings().set(provider, update);
+});
+ipcMain.handle("providers:remove", (event, provider: CloudProvider) => {
+  trustedSender(event);
+  return getProviderSettings().remove(provider);
+});
+ipcMain.handle("providers:test", async (event, provider: CloudProvider) => {
+  trustedSender(event);
+  if (!isCloudProvider(provider)) throw new Error("Unknown API provider.");
+  await testProviderKey(provider, getProviderSettings().key(provider));
+});
+
 ipcMain.handle("window:minimize", (event) => {
   trustedSender(event, true);
-  mainWindow?.minimize();
+  BrowserWindow.fromWebContents(event.sender)?.minimize();
 });
 ipcMain.handle("window:maximize", (event) => {
   trustedSender(event);
@@ -289,8 +318,8 @@ ipcMain.handle("window:maximize", (event) => {
 });
 ipcMain.handle("window:close", (event) => {
   trustedSender(event, true);
-  if (mainWindow) mainWindow.close();
-  else splashWindow?.close();
+  if (event.sender === splashWindow?.webContents) app.quit();
+  else mainWindow?.close();
 });
 ipcMain.handle("window:isMaximized", (event) => {
   trustedSender(event);
@@ -417,7 +446,7 @@ async function initialize() {
   await createSplashWindow();
   const setup = getSetupManager();
   if (setup.isSetupRequired()) {
-    splashWindow?.setSize(400, 500);
+    splashWindow?.setSize(400, 600);
     splashWindow?.center();
     splashWindow?.webContents.send("setup:mode");
     updateSplashStatus("First-time setup...");
@@ -447,16 +476,22 @@ async function initialize() {
 }
 
 app.on("second-instance", () => {
-  if (mainWindow?.isMinimized()) mainWindow.restore();
-  mainWindow?.focus();
+  const window = mainWindow ?? splashWindow;
+  if (window?.isMinimized()) window.restore();
+  window?.focus();
 });
 app.whenReady().then((): void => {
+  if (!gotTheLock) return;
   session.defaultSession.setPermissionCheckHandler(() => false);
   session.defaultSession.setPermissionRequestHandler(
     (_webContents, _permission, callback) => callback(false),
   );
   session.defaultSession.setDevicePermissionHandler(() => false);
-  void initialize();
+  void initialize().catch((error) => {
+    getLogger().error("main", error instanceof Error ? error.message : String(error));
+    splashWindow?.close();
+    createWindow();
+  });
 });
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();

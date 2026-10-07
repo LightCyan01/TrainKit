@@ -32,6 +32,8 @@ class ServiceManager:
         if self._caption_service is None or self._caption_key != key:
             if self._caption_service is not None:
                 self._caption_service.cleanup()
+            self._caption_service = None
+            self._caption_key = None
             self._caption_service = ImageCaptioningService(
                 model=model_path,
                 adapter=adapter,
@@ -74,6 +76,8 @@ class ServiceManager:
         if self._tag_service is None or self._tag_model_path != resolved:
             if self._tag_service is not None:
                 self._tag_service.cleanup()
+            self._tag_service = None
+            self._tag_model_path = None
             self._tag_service = ImageTaggingService(resolved)
             self._tag_model_path = resolved
         return self._tag_service
@@ -135,6 +139,8 @@ class ServiceManager:
         if self._upscale_service is None or self._upscale_key != key:
             if self._upscale_service is not None:
                 self._upscale_service.cleanup()
+            self._upscale_service = None
+            self._upscale_key = None
             self._upscale_service = factory()
             self._upscale_key = key
         return self._upscale_service

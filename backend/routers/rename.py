@@ -13,8 +13,6 @@ async def rename(
     jobs: JobManager = Depends(get_job_manager),
     service=Depends(get_rename_service),
 ):
-    service.clear_cache()
-
     async def run(context):
         return await service.process(request, context)
 

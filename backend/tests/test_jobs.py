@@ -54,6 +54,47 @@ async def test_job_cancellation_is_cooperative_and_terminal():
 
 
 @pytest.mark.asyncio
+async def test_cancelling_a_queued_job_skips_its_runner():
+    connections = FakeConnections()
+    manager = JobManager(connections)  # type: ignore[arg-type]
+    runner_called = False
+
+    async def runner(_context):
+        nonlocal runner_called
+        runner_called = True
+
+    created = await manager.start("upscale", runner)
+    await manager.cancel(created["job_id"])
+    await manager.tasks[created["job_id"]]
+
+    assert not runner_called
+    assert manager.get(created["job_id"])["status"] == "cancelled"
+    assert "running" not in [event["status"] for event in connections.events]
+
+
+@pytest.mark.asyncio
+async def test_cancellation_during_start_notification_skips_its_runner():
+    class CancellingConnections(FakeConnections):
+        async def send_job(self, job):
+            await super().send_job(job)
+            if job["status"] == "running":
+                await manager.cancel(job["job_id"])
+
+    manager = JobManager(CancellingConnections())  # type: ignore[arg-type]
+    runner_called = False
+
+    async def runner(_context):
+        nonlocal runner_called
+        runner_called = True
+
+    created = await manager.start("upscale", runner)
+    await manager.tasks[created["job_id"]]
+
+    assert not runner_called
+    assert manager.get(created["job_id"])["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
 async def test_model_maintenance_blocks_jobs_and_releases_reservation():
     manager = JobManager(FakeConnections())  # type: ignore[arg-type]
 

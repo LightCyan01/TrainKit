@@ -1,5 +1,7 @@
 from pathlib import Path
+from types import SimpleNamespace
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -52,3 +54,21 @@ def test_ncnn_blob_override_reports_discovered_names(tmp_path: Path):
             scale=1,
             use_vulkan=False,
         )
+
+
+@pytest.mark.parametrize("output_shape", [(2, 2), (1, 2, 2)])
+def test_ncnn_converts_grayscale_model_output_to_rgb(output_shape):
+    extractor = SimpleNamespace(
+        input=lambda *_args: 0,
+        extract=lambda *_args: (0, np.full(output_shape, 0.5, dtype=np.float32)),
+    )
+    service = object.__new__(NCNNUpscaleService)
+    service.net = SimpleNamespace(create_extractor=lambda: extractor)
+    service.input_blob = "input"
+    service.output_blob = "output"
+
+    output = service._process_tile(Image.new("RGB", (2, 2), "white"))
+
+    assert output.mode == "RGB"
+    assert output.size == (2, 2)
+    assert output.getpixel((0, 0)) == (127, 127, 127)

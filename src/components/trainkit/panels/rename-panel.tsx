@@ -14,7 +14,6 @@ export function RenamePanel({ isBackendOnline }: { isBackendOnline: boolean }) {
   const [zeroPad, setZeroPad] = useState(5);
   const [skipDuplicates, setSkipDuplicates] = useState(false);
   const [collisionPolicy, setCollisionPolicy] = useState<CollisionPolicy>("fail");
-  const [dryRun, setDryRun] = useState(false);
   const [saveManifest, setSaveManifest] = useState(false);
   const [resumeManifestPath, setResumeManifestPath] = useState("");
   const [error, setError] = useState("");
@@ -42,7 +41,6 @@ export function RenamePanel({ isBackendOnline }: { isBackendOnline: boolean }) {
         zero_pad: zeroPad,
         skip_duplicates: skipDuplicates,
         collision_policy: collisionPolicy,
-        dry_run: dryRun,
         save_manifest: saveManifest,
         resume_manifest_path: resumeManifestPath || null,
       });
@@ -62,10 +60,10 @@ export function RenamePanel({ isBackendOnline }: { isBackendOnline: boolean }) {
             <label className="space-y-2"><span className="text-[11px] font-semibold tracking-[0.15em] text-muted-foreground uppercase">Number width</span><input type="number" min={1} max={12} value={zeroPad} onChange={(event) => setZeroPad(Number(event.target.value))} disabled={isActive} className="w-full border border-border bg-input px-4 py-3 text-sm" /></label>
           </div>
           <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={skipDuplicates} onChange={(event) => setSkipDuplicates(event.target.checked)} disabled={isActive} className="h-4 w-4 accent-primary" />Skip visually duplicate images</label>
-          <BatchOptions collisionPolicy={collisionPolicy} onCollisionPolicyChange={setCollisionPolicy} dryRun={dryRun} onDryRunChange={setDryRun} saveManifest={saveManifest} onSaveManifestChange={setSaveManifest} resumeManifestPath={resumeManifestPath} onResumeManifestPathChange={setResumeManifestPath} disabled={isActive} />
+          <BatchOptions collisionPolicy={collisionPolicy} onCollisionPolicyChange={setCollisionPolicy} saveManifest={saveManifest} onSaveManifestChange={setSaveManifest} resumeManifestPath={resumeManifestPath} onResumeManifestPathChange={setResumeManifestPath} disabled={isActive} />
           {error && <p className="text-sm text-destructive">{error}</p>}
           <JobProgress job={job} />
-          <div className="flex gap-3"><Button size="lg" onClick={run} disabled={!canRun} loading={isActive}><Play className="h-4 w-4" />{dryRun ? "Create manifest" : "Start rename"}</Button><Button size="lg" variant="destructive" onClick={cancel} disabled={!isActive}><Square className="h-4 w-4" />Cancel</Button></div>
+          <div className="flex gap-3"><Button size="lg" onClick={run} disabled={!canRun} loading={isActive}><Play className="h-4 w-4" />Start rename</Button><Button size="lg" variant="destructive" onClick={cancel} disabled={!isActive}><Square className="h-4 w-4" />Cancel</Button></div>
         </section>
         <ImagePreview directoryPath={loadPath} className="min-h-[420px]" />
       </div>

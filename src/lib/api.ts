@@ -22,9 +22,9 @@ export async function apiRequest<T>(
   if (!response.ok) {
     const envelope = response.data as BackendErrorEnvelope;
     throw new ApiError(
-      envelope.error?.message ?? `Backend request failed (${response.status})`,
+      envelope?.error?.message ?? `Backend request failed (${response.status})`,
       response.status,
-      envelope.error?.code ?? "backend_error",
+      envelope?.error?.code ?? "backend_error",
     );
   }
   return response.data as T;

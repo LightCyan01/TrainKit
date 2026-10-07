@@ -20,6 +20,8 @@ flowchart LR
 
 `src/preload.ts` exposes a small typed API. The renderer can request a directory or file picker, operate only within granted paths, submit allowlisted backend routes, and receive sanitized status/job/log events. It does not know the Python port or authentication token.
 
+`src/provider-settings.ts` keeps configured provider keys in the main process. Its IPC returns only presence, model IDs, and persistence status. Session keys are the default; opt-in persistence uses Electron `safeStorage` and rejects Linux's plaintext fallback. Keys are added to authenticated caption requests through an internal header and never enter renderer request bodies, job snapshots, or manifests. Existing path ancestors are resolved before grants are checked, including new folders under junctions.
+
 `src/runtime-paths.ts` is the single authority for packaged paths. `src/setup-manager.ts` installs the locked Python environment beside the packaged backend under `resources/backend`, including its managed Python interpreter. uv's cache and temporary directory also stay there during setup and are removed after success. A marker binds the environment to the desktop version and `uv.lock` SHA-256. Session logs are stored under `logs` beside the executable.
 
 Because the packaged runtime is self-contained, TrainKit must be extracted to a folder the current user can write to. Setup checks this before downloading multi-gigabyte dependencies and reports the exact rejected path.
@@ -32,9 +34,13 @@ Because the packaged runtime is self-contained, TrainKit must be extracted to a 
 
 `backend/core/jobs.py` permits one active heavyweight job, assigns explicit job IDs, records terminal states, broadcasts progress after completed work, and supports cooperative cancellation. Caption generation also checks cancellation between generated tokens; tiled upscaling checks between tiles.
 
+WebSocket reconnects recover authoritative job snapshots. The renderer merges snapshots and events by update time so delayed recovery cannot roll back newer progress or terminal states.
+
 ## Data pipeline
 
 Every operation accepts one verified image or enumerates a selected folder in deterministic natural order. It creates an in-memory execution plan and resolves collision policy before the first output. The plan is persisted as a schema-versioned manifest only when requested, for dry runs, or while resuming an existing manifest. Writes use a temporary file in the destination directory followed by atomic replacement.
+
+Local and cloud captioning share one batch loop. Cloud calls use a per-job HTTP client, fixed provider endpoints, bounded metadata-free JPEGs and responses, explicit timeouts, and no automatic retries. Pending requests can be cancelled. Provider failures stop the cloud batch; credentials and raw provider errors are excluded from progress, logs, and persisted errors. OpenAI response storage is disabled, while provider retention policies still apply.
 
 Resume accepts only a matching operation and identical input/output paths. Completed and skipped items remain terminal; failed items return to pending. Every source and destination is resolved and checked against the selected input and output directory, including paired tagging outputs.
 

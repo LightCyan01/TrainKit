@@ -10,13 +10,10 @@ from core.exceptions import ProcessingError
 from core.jobs import JobContext
 from models import RenameRequest
 from service.manifest import BatchManifest, build_manifest, manifest_path
-from utils.file_util import atomic_copy, list_images
+from utils.file_util import atomic_copy, list_images, validate_image_path
 
 
 class RenameService:
-    def __init__(self):
-        self._duplicates_cache: set[Path] | None = None
-
     async def process(self, request: RenameRequest, context: JobContext) -> Path | None:
         load_path = Path(request.load_path).resolve()
         save_path = Path(request.save_path).resolve()
@@ -27,10 +24,10 @@ class RenameService:
             manifest.validate_destination_suffixes(SUPPORTED_INPUT_EXTENSIONS)
             manifest.preflight_resume(request.collision_policy)
         else:
-            duplicates: set[Path] = set()
+            sources = list_images(load_path)
             if request.skip_duplicates and load_path.is_dir():
-                duplicates = await asyncio.to_thread(self.skip_duplicates, load_path)
-            sources = [path for path in list_images(load_path) if path not in duplicates]
+                duplicates = await asyncio.to_thread(self.skip_duplicates, sources)
+                sources = [path for path in sources if path not in duplicates]
 
             def destination(source: Path, index: int) -> Path:
                 number = str(index).zfill(request.zero_pad)
@@ -70,6 +67,7 @@ class RenameService:
                 continue
             context.raise_if_cancelled()
             try:
+                await asyncio.to_thread(validate_image_path, Path(item.source))
                 await asyncio.to_thread(atomic_copy, Path(item.source), Path(item.destination))
                 item.status = "completed"
                 item.error = None
@@ -90,17 +88,17 @@ class RenameService:
             raise ProcessingError(f"Rename failed for {failures} item(s){detail}{suffix}")
         return output_manifest
 
-    def skip_duplicates(self, load_path: Path) -> set[Path]:
-        if self._duplicates_cache is not None:
-            return self._duplicates_cache
-        dif = difPy.build(str(load_path), recursive=False)
+    def skip_duplicates(self, sources: list[Path]) -> set[Path]:
+        for source in sources:
+            validate_image_path(source)
+        if len(sources) < 2:
+            return set()
+        dif = difPy.build(
+            [str(source) for source in sources], recursive=False, limit_extensions=False
+        )
         search = difPy.search(dif)
         duplicates: set[Path] = set()
         for duplicate_group in search.result.values():
             for entry in duplicate_group:
                 duplicates.add(Path(entry[0]).resolve())
-        self._duplicates_cache = duplicates
         return duplicates
-
-    def clear_cache(self):
-        self._duplicates_cache = None

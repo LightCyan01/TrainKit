@@ -46,31 +46,41 @@
         padding-top: 100px;
       }
 
-      .x-close-btn {
+      .window-controls {
         position: absolute;
-        top: 10px;
-        right: 10px;
+        top: 8px;
+        right: 8px;
+        z-index: 1;
+        display: flex;
+        gap: 2px;
+        -webkit-app-region: no-drag;
+      }
+
+      .window-control {
+        display: flex;
+        align-items: center;
+        justify-content: center;
         width: 28px;
         height: 28px;
         background: transparent;
         border: none;
-        color: #52525b;
-        font-size: 18px;
+        color: #a1a1aa;
         cursor: pointer;
-        display: none;
-        align-items: center;
-        justify-content: center;
         border-radius: 4px;
-        -webkit-app-region: no-drag;
       }
 
-      .x-close-btn:hover {
+      .window-control:hover {
         background: #27272a;
         color: #fafafa;
       }
 
-      .x-close-btn.visible {
-        display: flex;
+      .window-control:focus-visible {
+        outline: 2px solid #f97316;
+        outline-offset: 2px;
+      }
+
+      .window-control.quit:hover {
+        color: #f97316;
       }
 
       .logo-container {
@@ -205,28 +215,6 @@
         color: #f97316;
       }
 
-      .close-btn {
-        display: none;
-        margin-top: 20px;
-        padding: 10px 24px;
-        background: #27272a;
-        border: 1px solid #3f3f46;
-        border-radius: 6px;
-        color: #fafafa;
-        font-size: 12px;
-        cursor: pointer;
-        transition: background 0.2s;
-        -webkit-app-region: no-drag;
-      }
-
-      .close-btn:hover {
-        background: #3f3f46;
-      }
-
-      .close-btn.visible {
-        display: block;
-      }
-
       @keyframes fadeIn {
         from {
           opacity: 0;
@@ -325,7 +313,18 @@
     </style>
   </head>
   <body>
-    <button class="x-close-btn" id="xCloseBtn">×</button>
+    <div class="window-controls" aria-label="Window controls">
+      <button class="window-control" id="minimizeBtn" type="button" aria-label="Minimize" title="Minimize">
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M1 6h10" />
+        </svg>
+      </button>
+      <button class="window-control quit" id="quitBtn" type="button" aria-label="Quit TrainKit" title="Quit TrainKit">
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="m2 2 8 8m0-8-8 8" />
+        </svg>
+      </button>
+    </div>
     <div class="container" id="container">
       <div class="logo-container">
         <div class="glow"></div>
@@ -364,7 +363,6 @@
         <div class="console" id="console"></div>
       </div>
 
-      <button class="close-btn" id="closeBtn">Close</button>
     </div>
 
     <script>
@@ -388,19 +386,14 @@
 
       function showErrorState() {
         container.classList.add("error-state");
-        document.getElementById("xCloseBtn").classList.add("visible");
-        document.getElementById("closeBtn").classList.add("visible");
       }
 
       if (window.electronAPI) {
-        const closeBtn = document.getElementById("closeBtn");
-        const xCloseBtn = document.getElementById("xCloseBtn");
-
-        closeBtn.addEventListener("click", () => {
-          window.electronAPI.windowClose();
+        document.getElementById("minimizeBtn").addEventListener("click", () => {
+          window.electronAPI.windowMinimize();
         });
 
-        xCloseBtn.addEventListener("click", () => {
+        document.getElementById("quitBtn").addEventListener("click", () => {
           window.electronAPI.windowClose();
         });
 

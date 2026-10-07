@@ -1,7 +1,6 @@
 import eslint from "@eslint/js";
 import tseslint from "@typescript-eslint/eslint-plugin";
 import tsparser from "@typescript-eslint/parser";
-import importPlugin from "eslint-plugin-import";
 import globals from "globals";
 
 export default [
@@ -42,7 +41,6 @@ export default [
     },
     plugins: {
       "@typescript-eslint": tseslint,
-      import: importPlugin,
     },
     rules: {
       ...tseslint.configs.recommended.rules,

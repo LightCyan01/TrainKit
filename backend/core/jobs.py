@@ -153,8 +153,12 @@ class JobManager:
 
     async def _execute(self, record: JobRecord, cancelled: Event, runner: Runner):
         context = JobContext(self, record, cancelled)
-        await self.update(record.job_id, status="running", message=f"Starting {record.operation}")
         try:
+            context.raise_if_cancelled()
+            await self.update(
+                record.job_id, status="running", message=f"Starting {record.operation}"
+            )
+            context.raise_if_cancelled()
             manifest_path = await runner(context)
             context.raise_if_cancelled()
             await self.update(

@@ -1,8 +1,8 @@
 import React, { memo } from "react";
 import { cn } from "@/lib/utils";
-import { MessageSquareText, Maximize2, FileEdit, Tags, Terminal } from "lucide-react";
+import { MessageSquareText, Maximize2, FileEdit, Tags, Terminal, KeyRound } from "lucide-react";
 
-export type ServiceTab = "caption" | "upscale" | "rename" | "tag" | "logs";
+export type ServiceTab = "caption" | "upscale" | "rename" | "tag" | "logs" | "api";
 
 interface NavigationProps {
   activeTab: ServiceTab;
@@ -40,6 +40,12 @@ const tabs: {
     description: "Image Classification",
   },
   {
+    id: "api",
+    label: "API",
+    icon: <KeyRound className="h-4 w-4" />,
+    description: "Provider Connections",
+  },
+  {
     id: "logs",
     label: "LOGS",
     icon: <Terminal className="h-4 w-4" />,
@@ -67,7 +73,7 @@ export const Navigation = memo(function Navigation({ activeTab, onTabChange }: N
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
             className={cn(
-              "group relative flex items-center gap-3 px-6 py-4 transition-all duration-200",
+              "group relative flex items-center gap-3 px-4 py-4 transition-all duration-200",
               "border-b-2 -mb-px",
               activeTab === tab.id
                 ? "border-primary bg-primary/10 text-foreground"
@@ -123,7 +129,7 @@ export const Navigation = memo(function Navigation({ activeTab, onTabChange }: N
         ))}
 
         {/*label */}
-        <div className="ml-auto hidden md:flex items-center gap-2 px-4 py-2">
+        <div className="ml-auto hidden xl:flex items-center gap-2 px-4 py-2">
           <div className="h-1.5 w-1.5 bg-primary rounded-full animate-pulse" />
           <span className="text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
             Select Operation

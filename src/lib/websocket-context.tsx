@@ -9,12 +9,15 @@ import {
 } from "react";
 import {
   isJobEvent,
+  isJobRecord,
   isLogEvent,
+  mergeJobRecords,
   type JobRecord,
   type LogLevel,
   type LogSource,
 } from "@/types/contracts";
 import type { MainLogEntry } from "@/types/electron";
+import { apiRequest } from "@/lib/api";
 
 export interface LogEntry {
   id: string;
@@ -32,6 +35,7 @@ interface BackendEventsContextValue {
   logs: LogEntry[];
   addFrontendLog: (level: LogLevel, message: string) => void;
   clearLogs: () => void;
+  updateJob: (job: JobRecord) => void;
 }
 
 const BackendEventsContext = createContext<BackendEventsContextValue | null>(null);
@@ -78,13 +82,18 @@ export function WebSocketProvider({
     [appendLog],
   );
   const clearLogs = useCallback(() => setLogs([]), []);
+  const updateJob = useCallback((job: JobRecord) => {
+    if (!isJobRecord(job)) return;
+    setJobs((previous) => mergeJobRecords(previous, [job]));
+    setLatestJob((previous) =>
+      !previous || previous.updated_at < job.updated_at ? job : previous,
+    );
+  }, []);
 
   useEffect(() => {
     const removeBackend = window.electronAPI.onBackendEvent((event) => {
       if (isJobEvent(event)) {
-        const job: JobRecord = event;
-        setJobs((previous) => ({ ...previous, [job.job_id]: job }));
-        setLatestJob(job);
+        updateJob(event);
       } else if (isLogEvent(event)) {
         appendLog(event.level, event.message, event.source ?? "backend");
       }
@@ -113,7 +122,21 @@ export function WebSocketProvider({
       removeBackend();
       removeMain();
     };
-  }, [appendLog]);
+  }, [appendLog, updateJob]);
+
+  useEffect(() => {
+    if (!isBackendOnline) return;
+    let cancelled = false;
+    void apiRequest<{ jobs: unknown[] }>("/jobs").then((snapshot) => {
+      if (cancelled || !Array.isArray(snapshot?.jobs)) return;
+      for (const job of snapshot.jobs) {
+        if (isJobRecord(job)) updateJob(job);
+      }
+    }).catch((error) => {
+      if (!cancelled) addFrontendLog("warning", `Could not recover job state: ${String(error)}`);
+    });
+    return () => { cancelled = true; };
+  }, [isBackendOnline, updateJob, addFrontendLog]);
 
   const value = useMemo(
     () => ({
@@ -124,8 +147,9 @@ export function WebSocketProvider({
       logs,
       addFrontendLog,
       clearLogs,
+      updateJob,
     }),
-    [isBackendOnline, jobs, latestJob, logs, addFrontendLog, clearLogs],
+    [isBackendOnline, jobs, latestJob, logs, addFrontendLog, clearLogs, updateJob],
   );
   return (
     <BackendEventsContext.Provider value={value}>

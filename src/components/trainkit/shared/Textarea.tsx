@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useId } from "react";
 import { cn } from "@/lib/utils";
 
 interface TextareaProps {
@@ -18,9 +18,10 @@ export const Textarea = memo(function Textarea({
   rows = 4,
   disabled = false,
 }: TextareaProps) {
+  const inputId = useId();
   return (
-    <div className="space-y-2">
-      <label className="text-[11px] font-semibold tracking-[0.15em] text-muted-foreground uppercase">
+    <div className="min-w-0 space-y-2">
+      <label htmlFor={inputId} className="text-[11px] font-semibold tracking-[0.15em] text-muted-foreground uppercase">
         {label}
       </label>
       <div className="relative group">
@@ -31,6 +32,7 @@ export const Textarea = memo(function Textarea({
         <div className="absolute -bottom-px -right-px w-3 h-3 border-b-2 border-r-2 border-primary/50 group-focus-within:border-primary transition-colors" />
 
         <textarea
+          id={inputId}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}

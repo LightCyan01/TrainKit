@@ -4,7 +4,7 @@ Thanks for improving TrainKit. Keep changes focused, add regression coverage for
 
 ## Development setup
 
-Install Node.js 22.12+, uv, Python 3.12, and the Microsoft Visual C++ x64 Redistributable on Windows. Then run:
+Install Node.js 22.17+, uv, Python 3.12, and the Microsoft Visual C++ x64 Redistributable on Windows. Then run:
 
 ```powershell
 npm ci
@@ -30,6 +30,8 @@ npm run verify:package
 ## Project invariants
 
 - The renderer never receives the backend token or its port.
+- Configured API keys stay in the main process and per-job authenticated backend headers; never log them or include them in manifests. Persistence requires explicit opt-in and OS encryption.
+- Cloud captioning must not automatically retry paid requests.
 - Renderer filesystem access must flow through narrow IPC and a user-selected path grant.
 - Backend HTTP and WebSocket access remains authenticated and loopback-only.
 - Resume manifests are untrusted and must remain scoped to the requested input/output roots.
@@ -46,7 +48,7 @@ User-visible changes must update `CHANGELOG.md` under the target version. The re
 
 ## Maintainer release setup
 
-Tagged releases must match `package.json` exactly (for example, version `1.2.1` requires tag `v1.2.1`). Releases are unsigned by default. To Authenticode-sign the packaged executable, configure both GitHub Actions secrets:
+Tagged releases must match `package.json` exactly (for example, version `1.3.0` requires tag `v1.3.0`). Releases are unsigned by default. To Authenticode-sign the packaged executable, configure both GitHub Actions secrets:
 
 - `WINDOWS_CERTIFICATE_BASE64`: Base64-encoded PFX code-signing certificate.
 - `WINDOWS_CERTIFICATE_PASSWORD`: PFX password.

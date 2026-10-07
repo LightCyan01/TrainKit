@@ -78,11 +78,10 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
 }
 
-export function isJobEvent(value: unknown): value is JobEvent {
+export function isJobRecord(value: unknown): value is JobRecord {
   if (!value || typeof value !== "object") return false;
-  const event = value as Partial<JobEvent>;
+  const event = value as Partial<JobRecord>;
   return (
-    event.type === "job" &&
     typeof event.job_id === "string" &&
     JOB_OPERATIONS.includes(event.operation as JobOperation) &&
     JOB_STATUSES.includes(event.status as JobStatus) &&
@@ -102,6 +101,26 @@ export function isJobEvent(value: unknown): value is JobEvent {
     typeof event.created_at === "string" &&
     typeof event.updated_at === "string"
   );
+}
+
+export function isJobEvent(value: unknown): value is JobEvent {
+  return isJobRecord(value) && (value as JobEvent).type === "job";
+}
+
+export function mergeJobRecords(
+  previous: Record<string, JobRecord>,
+  incoming: readonly JobRecord[],
+): Record<string, JobRecord> {
+  const next = { ...previous };
+  let changed = false;
+  for (const job of incoming) {
+    const current = next[job.job_id];
+    // Backend UTC ISO timestamps retain microseconds that Date.parse would discard.
+    if (current && current.updated_at >= job.updated_at) continue;
+    next[job.job_id] = job;
+    changed = true;
+  }
+  return changed ? next : previous;
 }
 
 export function isLogEvent(value: unknown): value is LogEvent {

@@ -1,6 +1,6 @@
 # Model support
 
-TrainKit uses local model paths. It does not enable Transformers `trust_remote_code`, and Spandrel pickle checkpoints are intentionally rejected.
+Local operations use model paths. TrainKit does not enable Transformers `trust_remote_code`, and Spandrel pickle checkpoints are intentionally rejected. Cloud captioning optionally uses a configured Anthropic or OpenAI vision model.
 
 ## Caption models
 
@@ -12,6 +12,12 @@ Select a local Hugging Face model directory containing `config.json` plus the mo
 - **InstructBLIP:** loads `InstructBlipForConditionalGeneration`.
 
 Compatibility depends on the installed Transformers version and the model using a built-in architecture. Models that require arbitrary repository Python code are not supported. Captions are written as UTF-8 `.txt` sidecars.
+
+### Cloud caption models
+
+The API tab defaults to `claude-haiku-4-5-20251001` for Anthropic and `gpt-4.1-mini` for OpenAI. The model ID is editable because availability and account permissions vary. Use a model supporting image input and text output on the provider's Messages or Responses API. A key connection test checks authentication, not model-specific permissions. No local caption model or GPU is used for cloud inference, although TrainKit's normal backend runtime is still required.
+
+Cloud captioning stops on refusals, empty output, and truncated responses instead of saving incomplete training captions. Select a configured provider and click **Start captioning** to send images and your instruction. See the [cloud captioning guide](../README.md#cloud-captioning) for credentials, billing, and data handling.
 
 ## Spandrel upscalers
 
