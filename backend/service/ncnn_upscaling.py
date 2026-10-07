@@ -120,6 +120,8 @@ class NCNNUpscaleService:
             output_array = output_array.transpose(1, 2, 0)
         if output_array.ndim == 2:
             output_array = np.repeat(output_array[:, :, None], 3, axis=2)
+        if output_array.shape[2] == 1:
+            output_array = np.repeat(output_array, 3, axis=2)
         output_array = output_array[:, :, :3]
         if output_array.max(initial=0) <= 1.5:
             output_array *= 255.0

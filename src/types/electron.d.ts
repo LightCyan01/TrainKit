@@ -1,4 +1,5 @@
 import type { BackendEvent, BackendResponse, LogLevel, LogSource } from "./contracts";
+import type { CloudProvider, ProviderSettings, ProviderUpdate } from "./providers";
 
 export interface MainLogEntry {
   timestamp: string;
@@ -8,6 +9,10 @@ export interface MainLogEntry {
 }
 
 export interface ElectronAPI {
+  getProviderSettings: () => Promise<ProviderSettings>;
+  setProviderSettings: (provider: CloudProvider, update: ProviderUpdate) => Promise<ProviderSettings>;
+  removeProviderKey: (provider: CloudProvider) => Promise<ProviderSettings>;
+  testProviderKey: (provider: CloudProvider) => Promise<void>;
   windowMinimize: () => Promise<void>;
   windowMaximize: () => Promise<void>;
   windowClose: () => Promise<void>;

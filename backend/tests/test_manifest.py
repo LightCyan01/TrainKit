@@ -3,7 +3,13 @@ from pathlib import Path
 import pytest
 
 from core.exceptions import InvalidPathError
-from service.manifest import BatchManifest, build_manifest
+from service.manifest import (
+    BatchManifest,
+    atomic_write_text,
+    build_manifest,
+    manifest_path,
+    sorted_files,
+)
 
 
 def test_manifest_naturally_sorts_and_zero_collision_renames(tmp_path: Path):
@@ -218,3 +224,50 @@ def test_resume_rechecks_destinations_created_after_original_run(tmp_path: Path)
 
     loaded.preflight_resume("overwrite")
     assert loaded.items[0].status == "pending"
+
+
+def test_natural_sort_ties_are_independent_of_enumeration(tmp_path: Path):
+    files = [tmp_path / "image1.png", tmp_path / "image01.png", tmp_path / "Image1.png"]
+    assert sorted_files(files) == sorted_files(reversed(files))
+
+
+def test_failed_atomic_write_preserves_output_and_removes_temporary(tmp_path: Path, monkeypatch):
+    import service.manifest as module
+
+    output = tmp_path / "caption.txt"
+    output.write_text("original", encoding="utf-8")
+
+    def fail_replace(*_args):
+        raise OSError("file locked")
+
+    monkeypatch.setattr(module.os, "replace", fail_replace)
+    with pytest.raises(OSError, match="file locked"):
+        atomic_write_text(output, "replacement")
+    assert output.read_text(encoding="utf-8") == "original"
+    assert list(tmp_path.iterdir()) == [output]
+
+
+def test_generated_manifest_rejects_directory_link_outside_output(tmp_path: Path):
+    import os
+    import subprocess
+
+    output = tmp_path / "output"
+    outside = tmp_path / "outside"
+    output.mkdir()
+    outside.mkdir()
+    link = output / ".trainkit"
+    if os.name == "nt":
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(outside)], check=True, capture_output=True
+        )
+    else:
+        link.symlink_to(outside, target_is_directory=True)
+    try:
+        with pytest.raises(InvalidPathError, match="Manifest path escapes"):
+            manifest_path(output, "test-job")
+        assert not list(outside.iterdir())
+    finally:
+        if os.name == "nt":
+            link.rmdir()
+        else:
+            link.unlink()

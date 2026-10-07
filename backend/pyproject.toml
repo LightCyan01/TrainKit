@@ -8,6 +8,7 @@ dependencies = [
     "accelerate>=1.11.0",
     "difpy>=4.2.1",
     "fastapi>=0.139.0,<0.140",
+    "httpx>=0.28.1,<1",
     "ncnn>=1.0.20260526",
     "numpy>=2.3.0",
     "pillow>=12.3.0,<13",

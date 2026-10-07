@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 CollisionPolicy = Literal["fail", "skip", "overwrite", "rename"]
 JobOperation = Literal["rename", "caption", "upscale", "tag"]
@@ -38,12 +38,34 @@ class UpscaleRequest(BatchRequest):
     ncnn_scale: int = Field(default=4, ge=1, le=16)
     ncnn_use_vulkan: bool = True
 
+    @model_validator(mode="after")
+    def validate_tiling(self) -> UpscaleRequest:
+        if self.use_tiling and self.tile_overlap >= self.tile_size:
+            raise ValueError("Tile overlap must be smaller than tile size")
+        return self
+
 
 class CaptionRequest(BatchRequest):
-    caption_model_path: str
+    caption_model_path: str = ""
+    provider: Literal["local", "anthropic", "openai"] = "local"
+    cloud_model: str = Field(default="", max_length=200)
+    cloud_consent: bool = False
     prompt: str = Field(min_length=1, max_length=8000)
     adapter: Literal["auto", "multimodal", "blip", "instructblip"] = "auto"
     max_new_tokens: int = Field(default=256, ge=1, le=2048)
+
+    @model_validator(mode="after")
+    def validate_provider(self) -> CaptionRequest:
+        if self.provider == "local":
+            if not self.caption_model_path.strip():
+                raise ValueError("Local captioning requires a model folder")
+        else:
+            self.cloud_model = self.cloud_model.strip()
+            if not self.cloud_model:
+                raise ValueError("Cloud captioning requires a model ID")
+            if not self.dry_run and not self.cloud_consent:
+                raise ValueError("Cloud captioning requires consent to upload images")
+        return self
 
 
 class TagRequest(BatchRequest):

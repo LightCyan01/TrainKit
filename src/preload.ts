@@ -9,6 +9,10 @@ const electronAPI = {
 
   getBackendStatus: () => ipcRenderer.invoke("backend:status"),
   backendRequest: (request) => ipcRenderer.invoke("backend:request", request),
+  getProviderSettings: () => ipcRenderer.invoke("providers:get"),
+  setProviderSettings: (provider, update) => ipcRenderer.invoke("providers:set", provider, update),
+  removeProviderKey: (provider) => ipcRenderer.invoke("providers:remove", provider),
+  testProviderKey: (provider) => ipcRenderer.invoke("providers:test", provider),
   onBackendReady: (callback) => {
     const handler = () => callback();
     ipcRenderer.on("backend:ready", handler);

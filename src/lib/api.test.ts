@@ -30,4 +30,13 @@ describe("apiRequest", () => {
       new ApiError("busy", 409, "conflict"),
     );
   });
+
+  it("preserves the fallback API error when the backend error body is empty", async () => {
+    window.electronAPI.backendRequest = vi.fn().mockResolvedValue({
+      ok: false, status: 503, data: null,
+    });
+    await expect(apiRequest("/health")).rejects.toEqual(
+      new ApiError("Backend request failed (503)", 503, "backend_error"),
+    );
+  });
 });

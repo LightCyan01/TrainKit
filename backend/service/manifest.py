@@ -135,11 +135,14 @@ def natural_key(path: Path) -> list[str | int]:
 
 
 def sorted_files(paths: Iterable[Path]) -> list[Path]:
-    return sorted(paths, key=natural_key)
+    return sorted(paths, key=lambda path: (natural_key(path), path.name.casefold(), str(path)))
 
 
 def manifest_path(save_path: Path, job_id: str) -> Path:
-    return save_path / ".trainkit" / "manifests" / f"{job_id}.json"
+    destination = save_path / ".trainkit" / "manifests" / f"{job_id}.json"
+    if not _is_within(destination, save_path):
+        raise InvalidPathError("Manifest path escapes the selected output directory")
+    return destination
 
 
 def _path_key(path: Path) -> str:
@@ -233,14 +236,19 @@ def build_manifest(
 
 def atomic_write_text(path: Path, contents: str):
     path.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile(
-        "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
-    ) as handle:
-        handle.write(contents)
-        handle.flush()
-        os.fsync(handle.fileno())
-        temporary = Path(handle.name)
-    os.replace(temporary, path)
+    temporary = None
+    try:
+        with NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(contents)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def atomic_write_json(path: Path, value: object):

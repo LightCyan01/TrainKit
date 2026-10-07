@@ -7,7 +7,7 @@ import { app, BrowserWindow } from "electron";
 import WebSocket from "ws";
 import { getLogger } from "./logger";
 import { getRuntimePaths } from "./runtime-paths";
-import { isJobEvent, isLogEvent, type BackendEvent } from "./types/contracts";
+import { isJobEvent, isJobRecord, isLogEvent, type BackendEvent } from "./types/contracts";
 
 export type BackendStatus = "stopped" | "starting" | "running" | "error";
 
@@ -52,65 +52,68 @@ export class BackendManager {
     const logger = getLogger();
     this.lastError = null;
     this.setStatus("starting");
-    this.port = await this.findAvailablePort();
-    this.token = randomBytes(32).toString("hex");
+    try {
+      this.port = await this.findAvailablePort();
+      this.token = randomBytes(32).toString("hex");
 
-    const paths = getRuntimePaths();
-    const backendPath = paths.backendPath;
-    if (!fs.existsSync(backendPath)) {
-      this.lastError = `Backend directory not found: ${backendPath}`;
+      const paths = getRuntimePaths();
+      const backendPath = paths.backendPath;
+      if (!fs.existsSync(backendPath)) {
+        throw new Error(`Backend directory not found: ${backendPath}`);
+      }
+
+      const runtimePath = paths.runtimePath;
+      const python =
+        process.platform === "win32"
+          ? path.join(runtimePath, ".venv", "Scripts", "python.exe")
+          : path.join(runtimePath, ".venv", "bin", "python");
+      if (!fs.existsSync(python)) {
+        throw new Error(`Python environment not found: ${python}`);
+      }
+
+      fs.mkdirSync(paths.modelCachePath, { recursive: true });
+
+      const args = [
+        "-m",
+        "uvicorn",
+        "main:app",
+        "--host",
+        this.host,
+        "--port",
+        String(this.port),
+        "--no-server-header",
+      ];
+      logger.info("backend", `Starting authenticated backend on ${this.host}:${this.port}`);
+      logger.info("backend", `Backend source: ${backendPath}`);
+      logger.info("backend", `Python environment: ${path.dirname(path.dirname(python))}`);
+      this.process = spawn(python, args, {
+        cwd: backendPath,
+        detached: false,
+        stdio: "pipe",
+        windowsHide: true,
+        env: {
+          ...process.env,
+          PYTHONIOENCODING: "utf-8",
+          PYTHONUTF8: "1",
+          PYTHONUNBUFFERED: "1",
+          NO_COLOR: "1",
+          FORCE_COLOR: "0",
+          HF_HOME: path.join(paths.modelCachePath, "huggingface"),
+          HF_HUB_CACHE: path.join(paths.modelCachePath, "huggingface", "hub"),
+          TORCH_HOME: path.join(paths.modelCachePath, "torch"),
+          XDG_CACHE_HOME: paths.modelCachePath,
+          TRAINKIT_BACKEND_TOKEN: this.token,
+          TRAINKIT_DESKTOP_ORIGIN: DESKTOP_ORIGIN,
+          TRAINKIT_VERSION: app.getVersion(),
+        },
+      });
+      this.setupListeners();
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
       this.setStatus("error");
-      throw new Error(this.lastError);
+      logger.error("backend", this.lastError);
+      throw error;
     }
-
-    const runtimePath = paths.runtimePath;
-    const python =
-      process.platform === "win32"
-        ? path.join(runtimePath, ".venv", "Scripts", "python.exe")
-        : path.join(runtimePath, ".venv", "bin", "python");
-    if (!fs.existsSync(python)) {
-      this.lastError = `Python environment not found: ${python}`;
-      this.setStatus("error");
-      throw new Error(this.lastError);
-    }
-
-    fs.mkdirSync(paths.modelCachePath, { recursive: true });
-
-    const args = [
-      "-m",
-      "uvicorn",
-      "main:app",
-      "--host",
-      this.host,
-      "--port",
-      String(this.port),
-      "--no-server-header",
-    ];
-    logger.info("backend", `Starting authenticated backend on ${this.host}:${this.port}`);
-    logger.info("backend", `Backend source: ${backendPath}`);
-    logger.info("backend", `Python environment: ${path.dirname(path.dirname(python))}`);
-    this.process = spawn(python, args, {
-      cwd: backendPath,
-      detached: false,
-      stdio: "pipe",
-      windowsHide: true,
-      env: {
-        ...process.env,
-        PYTHONIOENCODING: "utf-8",
-        PYTHONUTF8: "1",
-        PYTHONUNBUFFERED: "1",
-        NO_COLOR: "1",
-        FORCE_COLOR: "0",
-        HF_HOME: path.join(paths.modelCachePath, "huggingface"),
-        HF_HUB_CACHE: path.join(paths.modelCachePath, "huggingface", "hub"),
-        TORCH_HOME: path.join(paths.modelCachePath, "torch"),
-        XDG_CACHE_HOME: paths.modelCachePath,
-        TRAINKIT_BACKEND_TOKEN: this.token,
-        TRAINKIT_DESKTOP_ORIGIN: DESKTOP_ORIGIN,
-        TRAINKIT_VERSION: app.getVersion(),
-      },
-    });
-    this.setupListeners();
   }
 
   async stop(): Promise<void> {
@@ -123,7 +126,7 @@ export class BackendManager {
     }
     await new Promise<void>((resolve) => {
       const timeout = setTimeout(() => child.kill("SIGKILL"), 5_000);
-      child.once("exit", () => {
+      child.once("close", () => {
         clearTimeout(timeout);
         resolve();
       });
@@ -182,18 +185,19 @@ export class BackendManager {
     requestPath: string,
     method = "GET",
     body?: unknown,
+    extraHeaders: Record<string, string> = {},
   ): Promise<BackendResponse<T>> {
     const normalizedMethod = method.toUpperCase();
     if (!ALLOWED_METHODS.has(normalizedMethod) || !ALLOWED_PATH.test(requestPath)) {
       throw new Error("Backend request is outside the allowed API surface");
     }
     if (!this.isRunning()) throw new Error("Backend is not running");
+    const headers = new Headers(extraHeaders);
+    for (const [name, value] of Object.entries(this.authHeaders())) headers.set(name, value);
+    if (body !== undefined) headers.set("content-type", "application/json");
     const response = await fetch(`${this.getServerUrl()}${requestPath}`, {
       method: normalizedMethod,
-      headers: {
-        ...this.authHeaders(),
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
-      },
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(
         requestPath === "/preload" || requestPath === "/upscale-model-info"
@@ -275,6 +279,17 @@ export class BackendManager {
       headers: this.authHeaders(),
     });
     this.eventSocket = socket;
+    socket.on("open", () => {
+      void this.request<{ jobs: unknown[] }>("/jobs").then((response) => {
+        if (this.eventSocket !== socket || !response.ok || !Array.isArray(response.data?.jobs)) return;
+        for (const job of response.data.jobs) {
+          if (!isJobRecord(job)) continue;
+          for (const listener of this.eventListeners) listener({ ...job, type: "job" });
+        }
+      }).catch((error) => {
+        getLogger().warning("backend", `Could not recover job state: ${String(error)}`);
+      });
+    });
     socket.on("message", (payload) => {
       try {
         const event: unknown = JSON.parse(payload.toString());
@@ -331,6 +346,9 @@ export class BackendManager {
       this.lastError = `Backend process error: ${error.message}`;
       logger.error("backend", `Process error: ${error.message}`);
       this.setStatus("error");
+    });
+    child.on("close", () => {
+      if (this.process === child) this.process = null;
     });
     child.on("exit", (code, signal) => {
       logger[code === 0 ? "info" : "error"](

@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useId } from "react";
 import { cn } from "@/lib/utils";
 import { FileImage, Folder } from "lucide-react";
 
@@ -7,7 +7,7 @@ interface InputProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
-  type?: "text" | "path";
+  type?: "text" | "path" | "password";
   onBrowse?: () => void;
   onBrowseFile?: () => void;
   disabled?: boolean;
@@ -23,9 +23,10 @@ export const Input = memo(function Input({
   onBrowseFile,
   disabled = false,
 }: InputProps) {
+  const inputId = useId();
   return (
-    <div className="space-y-2">
-      <label className="text-[11px] font-semibold tracking-[0.15em] text-muted-foreground uppercase">
+    <div className="min-w-0 space-y-2">
+      <label htmlFor={inputId} className="text-[11px] font-semibold tracking-[0.15em] text-muted-foreground uppercase">
         {label}
       </label>
       <div className="relative group">
@@ -37,13 +38,14 @@ export const Input = memo(function Input({
 
         <div className="flex">
           <input
-            type="text"
+            id={inputId}
+            type={type === "path" ? "text" : type}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
             disabled={disabled}
             className={cn(
-              "flex-1 bg-input border border-border px-4 py-3",
+              "min-w-0 w-full flex-1 bg-input border border-border px-4 py-3",
               "text-sm text-foreground placeholder:text-muted-foreground/50",
               "focus:outline-none focus:border-primary/50 focus:bg-input/80",
               "transition-all duration-200",

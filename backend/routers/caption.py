@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 
 from core.dependencies import (
     get_connection_manager,
     get_job_manager,
     get_service_manager,
 )
+from core.exceptions import TrainKitException
 from core.jobs import JobManager
 from core.websocket import ConnectionManager
 from models import CaptionRequest, JobResponse, ModelStatusRequest, PreloadRequest
@@ -19,10 +20,24 @@ router = APIRouter(tags=["caption"])
 @router.post("/caption", response_model=JobResponse, status_code=202)
 async def caption(
     request: CaptionRequest,
+    provider_key: str | None = Header(default=None, alias="x-trainkit-provider-key"),
     jobs: JobManager = Depends(get_job_manager),
     services=Depends(get_service_manager),
 ):
+    if request.provider != "local" and not request.dry_run:
+        if not provider_key or not provider_key.strip():
+            raise TrainKitException(
+                "Configure the provider API key first", 400, "provider_key_missing"
+            )
+        provider_key = provider_key.strip()
+        if len(provider_key) > 8192 or any(not 33 <= ord(char) <= 126 for char in provider_key):
+            raise TrainKitException("Invalid provider API key", 400, "provider_key_invalid")
+
     async def run(context):
+        if request.provider != "local":
+            from service.cloud_captioning import process_cloud_caption_batch
+
+            return await process_cloud_caption_batch(request, context, provider_key or "")
         service = services.get_caption_service(
             Path(request.caption_model_path), request.adapter, request.max_new_tokens
         )
