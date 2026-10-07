@@ -49,7 +49,6 @@ class CaptionRequest(BatchRequest):
     caption_model_path: str = ""
     provider: Literal["local", "anthropic", "openai"] = "local"
     cloud_model: str = Field(default="", max_length=200)
-    cloud_consent: bool = False
     prompt: str = Field(min_length=1, max_length=8000)
     adapter: Literal["auto", "multimodal", "blip", "instructblip"] = "auto"
     max_new_tokens: int = Field(default=256, ge=1, le=2048)
@@ -63,8 +62,6 @@ class CaptionRequest(BatchRequest):
             self.cloud_model = self.cloud_model.strip()
             if not self.cloud_model:
                 raise ValueError("Cloud captioning requires a model ID")
-            if not self.dry_run and not self.cloud_consent:
-                raise ValueError("Cloud captioning requires consent to upload images")
         return self
 
 

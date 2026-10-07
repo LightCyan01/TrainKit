@@ -75,7 +75,7 @@ export function ApiPanel({ settings, onChange, error }: ApiPanelProps) {
     <div className="h-full overflow-y-auto p-6">
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="flex items-center gap-3"><KeyRound className="h-5 w-5 text-primary" /><div><h2 className="font-semibold tracking-wider">API CONNECTIONS</h2><p className="text-xs text-muted-foreground">Your keys. Your models. One caption workflow.</p></div></div>
-        <div className="flex gap-3 border border-accent/25 bg-accent/5 p-4 text-sm leading-relaxed"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" /><p>Local captioning stays on your computer. Cloud captioning sends resized images and your instruction to the selected provider and uses your API credits. Each cloud run requires your consent. Testing a key sends no images.</p></div>
+        <div className="flex gap-3 border border-accent/25 bg-accent/5 p-4 text-sm leading-relaxed"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" /><p>Cloud captioning sends images and your instruction to the selected provider and uses your API credits.</p></div>
         {(error || settings?.warning) && <p role="alert" className="text-sm text-destructive">{error || settings?.warning}</p>}
         <div className="grid gap-6 lg:grid-cols-2">{CLOUD_PROVIDERS.map((provider) => <ProviderCard key={provider} provider={provider} settings={settings} onChange={onChange} />)}</div>
       </div>

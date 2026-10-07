@@ -59,7 +59,7 @@ def test_model_status_does_not_echo_user_path(monkeypatch, tmp_path):
     }
 
 
-def test_cloud_caption_http_boundary_requires_consent_and_key_but_allows_dry_run(tmp_path):
+def test_cloud_caption_http_boundary_requires_key_but_allows_dry_run(tmp_path):
     source = tmp_path / "image.png"
     Image.new("RGB", (2, 2), "blue").save(source)
     body = {
@@ -72,8 +72,7 @@ def test_cloud_caption_http_boundary_requires_consent_and_key_but_allows_dry_run
     headers = {"x-trainkit-token": "test-token"}
     with TestClient(app) as client:
         assert client.post("/caption", json=body).status_code == 401
-        assert client.post("/caption", json=body, headers=headers).status_code == 422
-        missing = client.post("/caption", json={**body, "cloud_consent": True}, headers=headers)
+        missing = client.post("/caption", json=body, headers=headers)
         assert missing.status_code == 400
         assert missing.json()["error"]["code"] == "provider_key_missing"
         dry_run = client.post("/caption", json={**body, "dry_run": True}, headers=headers)

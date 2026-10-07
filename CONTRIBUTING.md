@@ -31,7 +31,7 @@ npm run verify:package
 
 - The renderer never receives the backend token or its port.
 - Configured API keys stay in the main process and per-job authenticated backend headers; never log them or include them in manifests. Persistence requires explicit opt-in and OS encryption.
-- Cloud captioning requires explicit upload consent and must not automatically retry paid requests. Tests use mocked transports, not real keys or paid calls.
+- Cloud captioning must not automatically retry paid requests.
 - Renderer filesystem access must flow through narrow IPC and a user-selected path grant.
 - Backend HTTP and WebSocket access remains authenticated and loopback-only.
 - Resume manifests are untrusted and must remain scoped to the requested input/output roots.

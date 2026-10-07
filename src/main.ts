@@ -215,8 +215,12 @@ function createWindow() {
     );
   }
   mainWindow.once("ready-to-show", () => {
-    mainWindow?.show();
-    mainWindow?.focus();
+    if (splashWindow?.isMinimized()) {
+      mainWindow?.showInactive();
+      mainWindow?.minimize();
+    } else {
+      mainWindow?.show();
+    }
     splashWindow?.close();
   });
   mainWindow.webContents.once("did-finish-load", () => {
@@ -305,7 +309,7 @@ ipcMain.handle("providers:test", async (event, provider: CloudProvider) => {
 
 ipcMain.handle("window:minimize", (event) => {
   trustedSender(event, true);
-  mainWindow?.minimize();
+  BrowserWindow.fromWebContents(event.sender)?.minimize();
 });
 ipcMain.handle("window:maximize", (event) => {
   trustedSender(event);
@@ -314,8 +318,8 @@ ipcMain.handle("window:maximize", (event) => {
 });
 ipcMain.handle("window:close", (event) => {
   trustedSender(event, true);
-  if (mainWindow) mainWindow.close();
-  else splashWindow?.close();
+  if (event.sender === splashWindow?.webContents) app.quit();
+  else mainWindow?.close();
 });
 ipcMain.handle("window:isMaximized", (event) => {
   trustedSender(event);
@@ -472,8 +476,9 @@ async function initialize() {
 }
 
 app.on("second-instance", () => {
-  if (mainWindow?.isMinimized()) mainWindow.restore();
-  mainWindow?.focus();
+  const window = mainWindow ?? splashWindow;
+  if (window?.isMinimized()) window.restore();
+  window?.focus();
 });
 app.whenReady().then((): void => {
   if (!gotTheLock) return;

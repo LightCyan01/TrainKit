@@ -35,7 +35,6 @@ export function UpscalePanel({ isBackendOnline }: { isBackendOnline: boolean }) 
   const [ncnnScale, setNcnnScale] = useState(4);
   const [useVulkan, setUseVulkan] = useState(true);
   const [collisionPolicy, setCollisionPolicy] = useState<CollisionPolicy>("fail");
-  const [dryRun, setDryRun] = useState(false);
   const [saveManifest, setSaveManifest] = useState(false);
   const [resumeManifestPath, setResumeManifestPath] = useState("");
   const [error, setError] = useState("");
@@ -123,7 +122,6 @@ export function UpscalePanel({ isBackendOnline }: { isBackendOnline: boolean }) 
         tile_size: tileSize,
         tile_overlap: tileOverlap,
         collision_policy: collisionPolicy,
-        dry_run: dryRun,
         save_manifest: saveManifest,
         resume_manifest_path: resumeManifestPath || null,
       });
@@ -166,10 +164,10 @@ export function UpscalePanel({ isBackendOnline }: { isBackendOnline: boolean }) 
             <label className="space-y-2"><span className="text-[10px] uppercase text-muted-foreground">Overlap</span><input type="number" min={0} max={512} value={tileOverlap} onChange={(event) => setTileOverlap(Number(event.target.value))} className="w-full border border-border bg-input px-3 py-2 text-sm" /></label>
           </div>
           <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={useTiling} onChange={(event) => setUseTiling(event.target.checked)} className="h-4 w-4 accent-primary" /><Cpu className="h-4 w-4" />Tile large images to limit memory</label>
-          <BatchOptions collisionPolicy={collisionPolicy} onCollisionPolicyChange={setCollisionPolicy} dryRun={dryRun} onDryRunChange={setDryRun} saveManifest={saveManifest} onSaveManifestChange={setSaveManifest} resumeManifestPath={resumeManifestPath} onResumeManifestPathChange={setResumeManifestPath} disabled={isActive} />
+          <BatchOptions collisionPolicy={collisionPolicy} onCollisionPolicyChange={setCollisionPolicy} saveManifest={saveManifest} onSaveManifestChange={setSaveManifest} resumeManifestPath={resumeManifestPath} onResumeManifestPathChange={setResumeManifestPath} disabled={isActive} />
           {error && <p className="text-sm text-destructive">{error}</p>}
           <JobProgress job={job} />
-          <div className="flex gap-3"><Button size="lg" onClick={run} disabled={!canRun} loading={isActive}><Play className="h-4 w-4" />{dryRun ? "Create manifest" : "Start upscaling"}</Button><Button size="lg" variant="destructive" onClick={cancel} disabled={!isActive}><Square className="h-4 w-4" />Cancel</Button></div>
+          <div className="flex gap-3"><Button size="lg" onClick={run} disabled={!canRun} loading={isActive}><Play className="h-4 w-4" />Start upscaling</Button><Button size="lg" variant="destructive" onClick={cancel} disabled={!isActive}><Square className="h-4 w-4" />Cancel</Button></div>
         </section>
         <ImagePreview directoryPath={loadPath} className="min-h-[420px]" />
       </div>

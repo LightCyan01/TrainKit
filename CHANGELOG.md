@@ -4,12 +4,12 @@ All notable TrainKit changes are documented here. TrainKit follows semantic vers
 
 ## [1.3.0] - 2026-10-07
 
-TrainKit 1.3.0 adds optional Claude and OpenAI captioning through your own API keys and improves batch safety and desktop reliability.
+TrainKit 1.3.0 adds Claude and OpenAI captioning through your own API keys and improves batch safety and desktop reliability.
 
 ### Added
 
 - API connections tab with masked key entry, session-only keys by default, optional OS-encrypted persistence, editable vision model IDs, removal, and an explicit connection test that sends no images.
-- Caption provider selection with unavailable providers disabled and explicit consent before cloud uploads.
+- Caption provider selection with unavailable providers disabled.
 - Anthropic Messages and OpenAI Responses image captioning with resized, metadata-free JPEGs, bounded responses, cancellable requests, and safe errors without automatic paid retries.
 
 ### Changed
@@ -18,6 +18,7 @@ TrainKit 1.3.0 adds optional Claude and OpenAI captioning through your own API k
 - Cloud batches stop on provider failures, refusals, or incomplete output; dry runs and fully skipped or completed batches make no provider requests.
 - Updated Electron to 44.6.0, Electron Forge to 8, ESLint to 10, Vitest to 5, and Lucide to 1; refreshed both dependency lockfiles and raised the development Node.js minimum to 22.17.
 - Removed unused comparison-slider and import-lint dependencies. TypeScript stays on 5.9 to match the supported range of the ESLint parser.
+- Removed dry-run controls from the desktop panels and aligned the manifest checkbox with the collision policy selector.
 
 ### Fixed
 
@@ -29,7 +30,8 @@ TrainKit 1.3.0 adds optional Claude and OpenAI captioning through your own API k
 - Rename batches reject invalid images, restrict duplicate detection to supported images, and use deterministic tie-breakers for natural ordering.
 - Single-channel NCNN output is converted to RGB and invalid tiled overlap is rejected before processing.
 - Failed atomic text writes remove their temporary files, and damaged provider records do not discard another provider's remembered key.
-- Development setup preserves test tools and excludes backend environments from frontend file watching; the setup failure close button remains visible.
+- Development setup preserves test tools and excludes backend environments from frontend file watching.
+- Setup and startup windows have top-left minimize and quit buttons. Minimizing setup keeps the main window minimized when it opens; quitting stops setup.
 
 ## [1.2.1] - 2026-07-15
 

@@ -17,7 +17,7 @@ Compatibility depends on the installed Transformers version and the model using 
 
 The API tab defaults to `claude-haiku-4-5-20251001` for Anthropic and `gpt-4.1-mini` for OpenAI. The model ID is editable because availability and account permissions vary. Use a model supporting image input and text output on the provider's Messages or Responses API. A key connection test checks authentication, not model-specific permissions. No local caption model or GPU is used for cloud inference, although TrainKit's normal backend runtime is still required.
 
-Cloud captioning stops on refusals, empty output, and truncated responses instead of saving incomplete training captions. Images and instructions leave your computer only after explicit consent for the selected provider. See the [cloud captioning guide](../README.md#cloud-captioning) for credentials, billing, and data handling.
+Cloud captioning stops on refusals, empty output, and truncated responses instead of saving incomplete training captions. Select a configured provider and click **Start captioning** to send images and your instruction. See the [cloud captioning guide](../README.md#cloud-captioning) for credentials, billing, and data handling.
 
 ## Spandrel upscalers
 

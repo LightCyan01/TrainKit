@@ -16,7 +16,6 @@ export function TagPanel({ isBackendOnline }: { isBackendOnline: boolean }) {
   const [topK, setTopK] = useState(20);
   const [output, setOutput] = useState<"json" | "txt" | "both">("both");
   const [collisionPolicy, setCollisionPolicy] = useState<CollisionPolicy>("fail");
-  const [dryRun, setDryRun] = useState(false);
   const [saveManifest, setSaveManifest] = useState(false);
   const [resumeManifestPath, setResumeManifestPath] = useState("");
   const [error, setError] = useState("");
@@ -56,7 +55,6 @@ export function TagPanel({ isBackendOnline }: { isBackendOnline: boolean }) {
         top_k: topK,
         output,
         collision_policy: collisionPolicy,
-        dry_run: dryRun,
         save_manifest: saveManifest,
         resume_manifest_path: resumeManifestPath || null,
       });
@@ -78,10 +76,10 @@ export function TagPanel({ isBackendOnline }: { isBackendOnline: boolean }) {
             <label className="space-y-2"><span className="text-[10px] uppercase text-muted-foreground">Top K</span><input type="number" min={1} max={1000} value={topK} onChange={(event) => setTopK(Number(event.target.value))} className="w-full border border-border bg-input px-3 py-2 text-sm" /></label>
             <label className="space-y-2"><span className="text-[10px] uppercase text-muted-foreground">Sidecars</span><select value={output} onChange={(event) => setOutput(event.target.value as typeof output)} className="w-full border border-border bg-input px-3 py-2 text-sm"><option value="both">JSON + TXT</option><option value="json">JSON</option><option value="txt">TXT</option></select></label>
           </div>
-          <BatchOptions collisionPolicy={collisionPolicy} onCollisionPolicyChange={setCollisionPolicy} dryRun={dryRun} onDryRunChange={setDryRun} saveManifest={saveManifest} onSaveManifestChange={setSaveManifest} resumeManifestPath={resumeManifestPath} onResumeManifestPathChange={setResumeManifestPath} disabled={isActive} />
+          <BatchOptions collisionPolicy={collisionPolicy} onCollisionPolicyChange={setCollisionPolicy} saveManifest={saveManifest} onSaveManifestChange={setSaveManifest} resumeManifestPath={resumeManifestPath} onResumeManifestPathChange={setResumeManifestPath} disabled={isActive} />
           {error && <p className="text-sm text-destructive">{error}</p>}
           <JobProgress job={job} />
-          <div className="flex gap-3"><Button size="lg" onClick={run} disabled={!canRun} loading={isActive}><Play className="h-4 w-4" />{dryRun ? "Create manifest" : "Start tagging"}</Button><Button size="lg" variant="destructive" onClick={cancel} disabled={!isActive}><Square className="h-4 w-4" />Cancel</Button></div>
+          <div className="flex gap-3"><Button size="lg" onClick={run} disabled={!canRun} loading={isActive}><Play className="h-4 w-4" />Start tagging</Button><Button size="lg" variant="destructive" onClick={cancel} disabled={!isActive}><Square className="h-4 w-4" />Cancel</Button></div>
         </section>
         <ImagePreview directoryPath={loadPath} className="min-h-[420px]" />
       </div>

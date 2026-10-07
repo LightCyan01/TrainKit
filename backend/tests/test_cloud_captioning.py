@@ -43,7 +43,6 @@ def make_request(tmp_path, **options):
         **{
             "provider": "openai",
             "cloud_model": "gpt-4.1-mini",
-            "cloud_consent": True,
             "load_path": str(source),
             "save_path": str(tmp_path / "output"),
             "prompt": "Describe this image",
@@ -80,15 +79,16 @@ def install_transport(monkeypatch, handler):
     return clients
 
 
-def test_caption_request_requires_provider_settings_and_upload_consent(tmp_path):
+def test_caption_request_requires_provider_settings(tmp_path):
     legacy = CaptionRequest(
         caption_model_path="model", load_path="input", save_path="output", prompt="Describe it"
     )
     assert legacy.provider == "local"
-    for options in ({"provider": "local"}, {"cloud_model": " "}, {"cloud_consent": False}):
+    for options in ({"provider": "local"}, {"cloud_model": " "}):
         with pytest.raises(ValidationError):
             make_request(tmp_path, **options)
-    assert make_request(tmp_path, dry_run=True, cloud_consent=False).dry_run
+    assert make_request(tmp_path).provider == "openai"
+    assert make_request(tmp_path, dry_run=True).dry_run
     assert "api_key" not in CaptionRequest.model_fields
 
 
@@ -149,7 +149,7 @@ def test_cloud_image_resize_strips_metadata_without_modifying_source():
 
 @pytest.mark.parametrize("mode", ["dry_run", "skip", "resume"])
 async def test_cloud_plans_without_requests(monkeypatch, tmp_path, mode):
-    request = make_request(tmp_path, dry_run=True, cloud_consent=False)
+    request = make_request(tmp_path, dry_run=True)
 
     def handler(_sent):
         pytest.fail("A planned or completed batch must not contact the provider")
@@ -161,7 +161,7 @@ async def test_cloud_plans_without_requests(monkeypatch, tmp_path, mode):
         return
     destination = tmp_path / "output" / "image.txt"
     destination.write_text("Existing caption")
-    options = {"dry_run": False, "cloud_consent": True}
+    options = {"dry_run": False}
     if mode == "skip":
         options["collision_policy"] = "skip"
     else:
@@ -324,7 +324,7 @@ async def test_missing_key_rejected_before_job_start(tmp_path):
 
 
 async def test_resume_sends_only_pending_images_with_one_client(monkeypatch, tmp_path):
-    plan = make_request(tmp_path, dry_run=True, cloud_consent=False)
+    plan = make_request(tmp_path, dry_run=True)
     Image.new("RGB", (2, 2), "red").save(tmp_path / "input" / "second.png")
     Image.new("RGB", (2, 2), "green").save(tmp_path / "input" / "third.png")
     calls = []
@@ -342,7 +342,6 @@ async def test_resume_sends_only_pending_images_with_one_client(monkeypatch, tmp
     request = plan.model_copy(
         update={
             "dry_run": False,
-            "cloud_consent": True,
             "resume_manifest_path": str(manifest_path),
         }
     )

@@ -15,14 +15,12 @@ export function CaptionPanel({ isBackendOnline, providerSettings, onOpenApi }: {
   const { addFrontendLog } = useWebSocket();
   const { job, isActive, start, cancel } = useJobOperation("caption");
   const [provider, setProvider] = useState<CaptionProvider>("local");
-  const [cloudConsent, setCloudConsent] = useState(false);
   const [modelPath, setModelPath] = useState("");
   const [adapter, setAdapter] = useState<CaptionAdapter>("auto");
   const [loadPath, setLoadPath] = useState("");
   const [savePath, setSavePath] = useState("");
   const [prompt, setPrompt] = useState("Write a detailed, factual training caption.");
   const [collisionPolicy, setCollisionPolicy] = useState<CollisionPolicy>("fail");
-  const [dryRun, setDryRun] = useState(false);
   const [saveManifest, setSaveManifest] = useState(false);
   const [resumeManifestPath, setResumeManifestPath] = useState("");
   const [modelValid, setModelValid] = useState(false);
@@ -32,7 +30,6 @@ export function CaptionPanel({ isBackendOnline, providerSettings, onOpenApi }: {
   const [error, setError] = useState("");
   const cloudSettings = provider === "local" ? null : providerSettings?.providers[provider];
   const controlsDisabled = isActive || loadingModel;
-  useEffect(() => { setCloudConsent(false); }, [provider, loadPath, prompt, cloudSettings?.model, cloudSettings?.configured, job?.job_id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,12 +120,11 @@ export function CaptionPanel({ isBackendOnline, providerSettings, onOpenApi }: {
     try {
       await start("/caption", {
         provider,
-        ...(provider === "local" ? { caption_model_path: modelPath, adapter } : { cloud_model: cloudSettings?.model, cloud_consent: cloudConsent }),
+        ...(provider === "local" ? { caption_model_path: modelPath, adapter } : { cloud_model: cloudSettings?.model }),
         load_path: loadPath,
         save_path: savePath,
         prompt,
         collision_policy: collisionPolicy,
-        dry_run: dryRun,
         save_manifest: saveManifest,
         resume_manifest_path: resumeManifestPath || null,
       });
@@ -138,7 +134,7 @@ export function CaptionPanel({ isBackendOnline, providerSettings, onOpenApi }: {
   };
 
   const canRun =
-    isBackendOnline && (provider === "local" ? modelValid : cloudSettings?.configured && (dryRun || cloudConsent)) && loadPath && savePath && prompt.trim() && !controlsDisabled;
+    isBackendOnline && (provider === "local" ? modelValid : cloudSettings?.configured) && loadPath && savePath && prompt.trim() && !controlsDisabled;
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
@@ -181,18 +177,17 @@ export function CaptionPanel({ isBackendOnline, providerSettings, onOpenApi }: {
           </> : <div className="space-y-3 border border-accent/25 bg-accent/5 p-4">
             <p className="break-all text-sm text-accent">{cloudSettings?.model || "Add an API key in settings"}</p>
             <p className="text-xs leading-relaxed text-muted-foreground">Images are resized to at most 1568 px and metadata is removed before upload. Captions are saved locally. Provider usage charges apply.</p>
-            <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={cloudConsent} onChange={(event) => setCloudConsent(event.target.checked)} disabled={controlsDisabled || dryRun} className="mt-0.5 h-4 w-4 accent-primary" /><span>I agree to send these images and this instruction to {provider === "anthropic" ? "Anthropic" : "OpenAI"} using my API credits.{dryRun && <span className="block text-xs text-muted-foreground">Dry run sends no images and makes no provider requests.</span>}</span></label>
           </div>}
           <Textarea label="Caption instruction" value={prompt} onChange={setPrompt} rows={4} disabled={isActive} />
           <div className="grid gap-4 md:grid-cols-2">
             <Input label="Input image or folder" value={loadPath} onChange={setLoadPath} type="path" onBrowse={browseLoad} onBrowseFile={browseImage} disabled={isActive} />
             <Input label="Output captions" value={savePath} onChange={setSavePath} type="path" onBrowse={browseSave} disabled={isActive} />
           </div>
-          <BatchOptions collisionPolicy={collisionPolicy} onCollisionPolicyChange={setCollisionPolicy} dryRun={dryRun} onDryRunChange={setDryRun} saveManifest={saveManifest} onSaveManifestChange={setSaveManifest} resumeManifestPath={resumeManifestPath} onResumeManifestPathChange={setResumeManifestPath} disabled={isActive} />
+          <BatchOptions collisionPolicy={collisionPolicy} onCollisionPolicyChange={setCollisionPolicy} saveManifest={saveManifest} onSaveManifestChange={setSaveManifest} resumeManifestPath={resumeManifestPath} onResumeManifestPathChange={setResumeManifestPath} disabled={isActive} />
           {error && <p className="text-sm text-destructive">{error}</p>}
           <JobProgress job={job} />
           <div className="flex gap-3">
-            <Button size="lg" onClick={run} disabled={!canRun} loading={isActive}><Play className="h-4 w-4" />{dryRun ? "Create manifest" : "Start captioning"}</Button>
+            <Button size="lg" onClick={run} disabled={!canRun} loading={isActive}><Play className="h-4 w-4" />Start captioning</Button>
             <Button size="lg" variant="destructive" onClick={cancel} disabled={!isActive}><Square className="h-4 w-4" />Cancel</Button>
           </div>
         </section>

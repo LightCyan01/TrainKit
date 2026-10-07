@@ -4,7 +4,7 @@
 
 <h1 align="center">TrainKit</h1>
 
-<p align="center">A local, resumable dataset-preparation desktop app for AI image training.</p>
+<p align="center">Prepare image datasets for AI training.</p>
 
 <p align="center">
   <a href="https://github.com/LightCyan01/TrainKit/actions/workflows/ci.yml"><img src="https://github.com/LightCyan01/TrainKit/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -23,13 +23,13 @@
   <a href="docs/architecture.md">Architecture</a>
 </p>
 
-TrainKit prepares individual images or complete image folders with local captioning, upscaling, tagging, and renaming. Optional Claude and OpenAI captioning uses your own API keys and requires consent before uploading images. Batch planning is deterministic, cancellable, and collision-aware; resumable manifest files are optional.
+TrainKit prepares individual images or image folders with local captioning, upscaling, tagging, and renaming. Claude and OpenAI captioning use your own API keys. You can cancel batches and save progress in a manifest to resume later.
 
 ## What's new in 1.3.0
 
 - Claude and OpenAI captioning through your own API keys, alongside local models.
-- An API tab with session keys, optional OS-encrypted storage, editable vision model IDs, and a key connection test.
-- Explicit cloud upload consent, bounded image requests, cancellation, and safe failures without automatic paid retries.
+- An API tab to save session keys, remember keys with OS encryption, choose vision models, and test key connections.
+- Cloud requests can be cancelled. Failed requests stop the batch without automatic paid retries.
 - Recovered progress after reconnecting, safer model switching and shutdown, and fixes for batch file handling.
 - Updated Electron and packaging dependencies with a clean dependency audit.
 
@@ -90,21 +90,21 @@ Normal runs do not write a manifest. Enable **Save resumable manifest** when you
 <output>/.trainkit/manifests/<job-id>.json
 ```
 
-Dry runs always write a manifest because the plan is their output. A resume uses the same operation and input/output paths, preserves completed and skipped items, retries failed items, and updates the selected manifest. Manifests are treated as untrusted input: paths outside the selected roots are rejected.
+To resume, select the manifest and use the same operation and input/output paths. TrainKit preserves completed and skipped items, retries failed items, and updates that manifest. It rejects paths outside the selected folders.
 
 ## Cloud captioning
 
-Open **API**, paste an Anthropic or OpenAI API key, choose a vision model available to your account, and save. Keys stay in memory for the session unless you select **Remember on this computer**, which uses OS encryption. Remembered credentials are stored under Electron's user-data directory and are tied to your operating-system account. Saved keys are never returned to the renderer. **Test key** checks authentication without sending images; it does not verify access to every model. API billing is separate from ChatGPT and Claude subscriptions.
+Open **API**, paste an Anthropic or OpenAI API key, choose a vision model available to your account, and save. Keys last for the session unless you select **Remember on this computer** to store them with OS encryption. Remembered keys are tied to your operating-system account. **Test key** checks authentication; it does not verify access to every model. API billing is separate from ChatGPT and Claude subscriptions.
 
-In **Caption**, choose the configured provider, select your images and output folder, enter an instruction, and confirm upload consent. Images are converted to JPEG, metadata is removed, and the longest edge is capped at 1568 pixels. Your instruction and resized images are sent to the selected provider; its data and billing policies apply. OpenAI requests use `store: false`, which does not replace the provider's retention policy. Captions remain local UTF-8 sidecars.
+In **Caption**, choose the configured provider, select your images and output folder, enter an instruction, and click **Start captioning**. Images are converted to JPEG, metadata is removed, and the longest edge is capped at 1568 pixels. Cloud captioning sends your instruction and resized images to the selected provider and uses API credits; the provider's data policies apply. OpenAI requests use `store: false`, which does not replace the provider's retention policy. Captions are saved as local UTF-8 text files.
 
-Cloud requests run sequentially and are not automatically retried. Authentication, quota, rate-limit, refusal, incomplete-response, or transport failures stop the batch safely. Save a manifest if you want to resume pending work. Cancellation stops pending requests and prevents publishing their captions, but cannot undo provider work or charges already incurred. Dry runs, already-completed resumes, and skipped outputs make no provider requests. Local mode remains the default.
+Cloud requests run one at a time and are not automatically retried. The batch stops if the provider rejects your key, refuses a caption, or returns an incomplete response. Connection failures, exhausted quota, and rate limits also stop the batch. Save a manifest if you want to resume pending work. Cancellation stops pending requests and prevents saving their captions, but cannot undo provider work or charges already incurred. Completed resumes and skipped outputs make no provider requests. Local mode remains the default.
 
 See [model support](docs/model-support.md) for model layouts and NCNN assumptions, [architecture](docs/architecture.md) for the desktop/backend trust boundaries, and the [changelog](CHANGELOG.md) for complete release history.
 
 ## Project status
 
-Version 1.3.0 adds optional cloud captioning and improves batch and desktop reliability. New feature proposals and model-compatibility reports are welcome through GitHub issues.
+Version 1.3.0 adds cloud captioning and improves batch and desktop reliability. New feature proposals and model-compatibility reports are welcome through GitHub issues.
 
 ## Contributing and security
 
