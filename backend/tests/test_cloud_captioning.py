@@ -1,8 +1,10 @@
 import asyncio
 import base64
+import errno
 import json
 from io import BytesIO
 from threading import Event
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -12,9 +14,10 @@ from pydantic import ValidationError
 from core.exceptions import InvalidPathError, JobCancelledError, ProcessingError, TrainKitException
 from models import CaptionRequest
 from routers.caption import caption
-from service import cloud_captioning
+from service import cloud_captioning, image_captioning
 from service.image_captioning import process_caption_batch
 from service.manifest import BatchManifest
+from utils.file_util import load_rgb_image
 
 TEST_KEY = "test-provider-secret"
 
@@ -139,12 +142,66 @@ async def test_provider_contract_and_shared_atomic_batch(monkeypatch, tmp_path, 
 def test_cloud_image_resize_strips_metadata_without_modifying_source():
     with Image.new("RGB", (4000, 2000), "blue") as image:
         image.info["comment"] = b"private metadata"
-        image.info["exif"] = b"private metadata"
+        exif = Image.Exif()
+        exif[315] = "private metadata"
+        image.info["exif"] = exif.tobytes()
         encoded = cloud_captioning.encode_cloud_image(image)
         assert image.size == (4000, 2000) and image.info["comment"] == b"private metadata"
         with Image.open(BytesIO(base64.b64decode(encoded))) as uploaded:
             assert uploaded.size == (1568, 784)
             assert "comment" not in uploaded.info and not uploaded.getexif()
+
+
+@pytest.mark.parametrize(
+    "orientation,size,expected_colors",
+    [
+        (6, (40, 80), [(20, 20, 240), (240, 20, 20), (240, 220, 20), (20, 220, 20)]),
+        (2, (80, 40), [(20, 220, 20), (240, 20, 20), (240, 220, 20), (20, 20, 240)]),
+    ],
+)
+def test_cloud_jpeg_encoding_applies_exif_orientation_without_changing_source(
+    tmp_path, orientation, size, expected_colors
+):
+    source = tmp_path / "oriented.jpg"
+    exif = Image.Exif()
+    exif[274] = orientation
+    exif[315] = "private author"
+    with Image.new("RGB", (80, 40)) as image:
+        for color, box in [
+            ((240, 20, 20), (0, 0, 40, 20)),
+            ((20, 220, 20), (40, 0, 80, 20)),
+            ((20, 20, 240), (0, 20, 40, 40)),
+            ((240, 220, 20), (40, 20, 80, 40)),
+        ]:
+            image.paste(color, box)
+        image.save(source, quality=95, subsampling=0, exif=exif, comment=b"private comment")
+    original_file = source.read_bytes()
+    with load_rgb_image(source) as image:
+        original_pixels = image.tobytes()
+        original_info = image.info.copy()
+        assert image.getexif()[274] == orientation
+
+        encoded = cloud_captioning.encode_cloud_image(image)
+
+        assert image.size == (80, 40)
+        assert image.tobytes() == original_pixels and image.info == original_info
+        assert image.getexif()[274] == orientation
+    assert source.read_bytes() == original_file
+    with Image.open(BytesIO(base64.b64decode(encoded))) as uploaded:
+        assert uploaded.size == size
+        assert not uploaded.getexif() and "comment" not in uploaded.info
+        width, height = uploaded.size
+        points = [
+            (width // 4, height // 4),
+            (3 * width // 4, height // 4),
+            (width // 4, 3 * height // 4),
+            (3 * width // 4, 3 * height // 4),
+        ]
+        for point, expected in zip(points, expected_colors, strict=True):
+            assert all(
+                abs(actual - wanted) <= 15
+                for actual, wanted in zip(uploaded.getpixel(point), expected, strict=True)
+            )
 
 
 @pytest.mark.parametrize("mode", ["dry_run", "skip", "resume"])
@@ -361,6 +418,85 @@ async def test_transport_exception_is_sanitized(monkeypatch, tmp_path):
         await cloud_captioning.process_cloud_caption_batch(request, FakeContext(), TEST_KEY)
     assert TEST_KEY not in str(error.value)
     saved = tmp_path / "output" / ".trainkit" / "manifests" / "cloud-job.json"
+    assert TEST_KEY not in saved.read_text()
+
+
+async def test_cloud_batch_preserves_local_image_failure_details(monkeypatch, tmp_path):
+    request = make_request(tmp_path, save_manifest=True)
+    (tmp_path / "input" / "image.bmp").write_bytes(b"not an image")
+    install_transport(monkeypatch, lambda _sent: pytest.fail("Invalid input must precede upload"))
+
+    with pytest.raises(ProcessingError, match="Invalid or unsafe image image.bmp"):
+        await cloud_captioning.process_cloud_caption_batch(request, FakeContext(), TEST_KEY)
+
+    saved = tmp_path / "output" / ".trainkit" / "manifests" / "cloud-job.json"
+    item = json.loads(saved.read_text())["items"][0]
+    assert item["status"] == "failed"
+    assert "Invalid or unsafe image image.bmp" in item["error"]
+    assert TEST_KEY not in saved.read_text()
+
+
+@pytest.mark.parametrize("save_manifest", [False, True])
+async def test_cloud_batch_reports_disk_full_after_successful_provider_response(
+    monkeypatch, tmp_path, save_manifest
+):
+    request = make_request(tmp_path, save_manifest=save_manifest, collision_policy="overwrite")
+    destination = tmp_path / "output" / "image.txt"
+    destination.parent.mkdir()
+    destination.write_text("Existing caption")
+    calls = []
+
+    def handler(sent):
+        calls.append(sent)
+        return httpx.Response(200, json=success_response())
+
+    install_transport(monkeypatch, handler)
+    write_caption = image_captioning.atomic_write_text
+
+    def disk_full(path, contents):
+        with patch(
+            "service.manifest.os.replace",
+            side_effect=OSError(errno.ENOSPC, "No space left on device", str(path)),
+        ):
+            write_caption(path, contents)
+
+    monkeypatch.setattr(image_captioning, "atomic_write_text", disk_full)
+    with pytest.raises(
+        ProcessingError, match="Could not save caption image.txt.*No space left on device"
+    ) as error:
+        await cloud_captioning.process_cloud_caption_batch(request, FakeContext(), TEST_KEY)
+
+    assert len(calls) == 1 and TEST_KEY not in str(error.value)
+    assert destination.read_text() == "Existing caption"
+    assert not list(destination.parent.glob(".image.txt.*"))
+    if not save_manifest:
+        assert not (tmp_path / "output" / ".trainkit").exists()
+        return
+    saved = tmp_path / "output" / ".trainkit" / "manifests" / "cloud-job.json"
+    item = json.loads(saved.read_text())["items"][0]
+    assert item["status"] == "failed"
+    assert "Could not save caption image.txt" in item["error"]
+    assert "No space left on device" in item["error"]
+    assert TEST_KEY not in saved.read_text()
+
+
+@pytest.mark.parametrize("exception_type", [RuntimeError, OSError])
+async def test_unexpected_provider_exceptions_remain_redacted(
+    monkeypatch, tmp_path, exception_type
+):
+    def handler(_sent):
+        raise exception_type(f"Sensitive provider detail: {TEST_KEY}")
+
+    install_transport(monkeypatch, handler)
+    request = make_request(tmp_path, save_manifest=True)
+    with pytest.raises(ProcessingError, match="Cloud captioning failed") as error:
+        await cloud_captioning.process_cloud_caption_batch(request, FakeContext(), TEST_KEY)
+
+    assert TEST_KEY not in str(error.value)
+    saved = tmp_path / "output" / ".trainkit" / "manifests" / "cloud-job.json"
+    item = json.loads(saved.read_text())["items"][0]
+    assert item["status"] == "failed"
+    assert item["error"] == "Cloud captioning failed; no caption was written"
     assert TEST_KEY not in saved.read_text()
 
 

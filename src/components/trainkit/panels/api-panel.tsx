@@ -60,7 +60,7 @@ function ProviderCard({ provider, settings, onChange }: Omit<ApiPanelProps, "err
       <div className="flex flex-wrap gap-3">
         <Button onClick={() => void perform("save")} disabled={!settings || (!key.trim() && !status?.configured) || !model.trim()} loading={busy}>Save settings</Button>
         <Button variant="secondary" onClick={() => void perform("test")} disabled={busy || !status?.configured || Boolean(key.trim())}><PlugZap className="h-4 w-4" />Test key</Button>
-        <Button variant="secondary" onClick={() => void perform("remove")} disabled={busy || !status?.configured}><Trash2 className="h-4 w-4" />Remove</Button>
+        <Button variant="secondary" onClick={() => void perform("remove")} disabled={busy || !(status?.configured || status?.remembered)}><Trash2 className="h-4 w-4" />Remove</Button>
       </div>
       <div aria-live="polite" className="text-sm">
         {message && <p className="text-accent">{message}</p>}

@@ -9,7 +9,7 @@ from threading import Event
 from typing import Any
 
 import httpx
-from PIL import Image
+from PIL import Image, ImageOps
 
 from core.exceptions import JobCancelledError, ProcessingError
 from core.jobs import JobContext
@@ -28,7 +28,7 @@ MAX_IMAGE_BYTES = 4 * 1024 * 1024
 
 def encode_cloud_image(image: Image.Image) -> str:
     # ponytail: one 1568px JPEG per request; add resolution controls if captions need finer detail.
-    with image.copy() as resized:
+    with ImageOps.exif_transpose(image) as resized:
         resized.thumbnail((1568, 1568), Image.Resampling.LANCZOS)
         resized.info.clear()
         with BytesIO() as buffer:

@@ -112,21 +112,30 @@ async def process_caption_batch(
             image = await asyncio.to_thread(load_rgb_image, Path(item.source))
             try:
                 caption = await caption_image(image, request.prompt, context.cancelled)
+            except JobCancelledError:
+                raise
+            except Exception as exc:
+                if request.provider != "local" and not isinstance(exc, ProcessingError):
+                    raise ProcessingError(
+                        "Cloud captioning failed; no caption was written"
+                    ) from None
+                raise
             finally:
                 image.close()
             context.raise_if_cancelled()
-            await asyncio.to_thread(atomic_write_text, Path(item.destination), caption)
+            try:
+                await asyncio.to_thread(atomic_write_text, Path(item.destination), caption)
+            except OSError as exc:
+                raise ProcessingError(
+                    f"Could not save caption {Path(item.destination).name}: {exc}"
+                ) from exc
             item.status = "completed"
             item.error = None
         except JobCancelledError:
             raise
         except Exception as exc:
             item.status = "failed"
-            item.error = (
-                str(exc)
-                if request.provider == "local" or isinstance(exc, ProcessingError)
-                else "Cloud captioning failed; no caption was written"
-            )
+            item.error = str(exc)
             if request.provider != "local":
                 if output_manifest is not None:
                     manifest.save(output_manifest)

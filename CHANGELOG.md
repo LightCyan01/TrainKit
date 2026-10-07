@@ -26,12 +26,15 @@ TrainKit 1.3.0 adds Claude and OpenAI captioning through your own API keys and i
 - Queued cancellation prevents the runner from starting, and missed job events are recovered after reconnecting.
 - Caption model controls stay consistent during loading, unloading, and completed runs; duplicate submissions and cancellation errors are handled centrally.
 - Backend spawn failures no longer hang shutdown, and empty error responses produce useful messages.
-- New output directories and generated manifests cannot escape selected folders through existing junctions.
+- New output directories and generated manifests resolve existing junctions; dangling folder links are rejected.
+- Unreadable remembered API keys can be removed without entering a replacement key.
+- Cloud captioning applies photo rotation and mirroring before removing metadata.
+- Cloud captioning distinguishes local file-save failures from provider errors.
 - Rename batches reject invalid images, restrict duplicate detection to supported images, and use deterministic tie-breakers for natural ordering.
 - Single-channel NCNN output is converted to RGB and invalid tiled overlap is rejected before processing.
 - Failed atomic text writes remove their temporary files, and damaged provider records do not discard another provider's remembered key.
 - Development setup preserves test tools and excludes backend environments from frontend file watching.
-- Setup and startup windows have small top-right minimize and quit icons. Minimizing setup keeps the main window minimized when it opens; quitting stops setup.
+- Setup and startup windows have small top-right minimize and quit buttons. Minimizing setup keeps the main window minimized when it opens; quitting stops setup.
 
 ## [1.2.1] - 2026-07-15
 
