@@ -25,7 +25,7 @@ const mocks = await vi.hoisted(async () => {
       waitForReady: vi.fn<() => Promise<boolean>>(), stop: vi.fn(),
       getStatus: () => "running", getLastError: (): null => null,
     },
-    setup: { isSetupRequired: vi.fn(), runSetup: vi.fn<() => Promise<boolean>>(), abort: vi.fn() },
+    setup: { prepareBackend: vi.fn(), isSetupRequired: vi.fn(), runSetup: vi.fn<() => Promise<boolean>>(), abort: vi.fn() },
     logger: { info: vi.fn(), success: vi.fn(), warning: vi.fn(), error: vi.fn() },
     closeLogger: vi.fn(),
     logCleanup: vi.fn(),
@@ -71,6 +71,7 @@ describe("preview IPC", () => {
     mocks.app.removeAllListeners();
     mocks.handlers.clear();
     mocks.windows.length = 0;
+    mocks.setup.prepareBackend.mockReset();
     mocks.setup.isSetupRequired.mockReturnValue(false);
     mocks.backend.start.mockResolvedValue(undefined);
     mocks.backend.waitForReady.mockResolvedValue(true);
@@ -261,6 +262,7 @@ describe("startup window controls", () => {
     mocks.app.removeAllListeners();
     mocks.handlers.clear();
     mocks.windows.length = 0;
+    mocks.setup.prepareBackend.mockReset();
     mocks.setup.isSetupRequired.mockReturnValue(true);
     mocks.setup.runSetup.mockImplementation(() => new Promise<boolean>(() => {}));
     mocks.backend.start.mockResolvedValue(undefined);
@@ -271,6 +273,26 @@ describe("startup window controls", () => {
     vi.stubGlobal("MAIN_WINDOW_VITE_NAME", "main_window");
   });
   afterEach(() => vi.unstubAllGlobals());
+
+  it("restores backend files before checking its environment", async () => {
+    mocks.setup.isSetupRequired.mockReturnValue(false);
+    await import("./main");
+    await vi.waitFor(() => expect(mocks.backend.start).toHaveBeenCalledOnce());
+    expect(mocks.setup.prepareBackend).toHaveBeenCalledOnce();
+    expect(mocks.setup.prepareBackend.mock.invocationCallOrder[0]).toBeLessThan(mocks.setup.isSetupRequired.mock.invocationCallOrder[0]);
+  });
+
+  it("keeps an unrecoverable install on the splash with an actionable error", async () => {
+    const message = "TrainKit could not restore its backend files. Extract the release ZIP to a writable folder and try again.";
+    mocks.setup.prepareBackend.mockImplementation(() => { throw new Error(message); });
+    await import("./main");
+    await vi.waitFor(() => expect(mocks.logger.error).toHaveBeenCalledWith("setup", message));
+    expect(mocks.windows).toHaveLength(1);
+    expect(mocks.windows[0].webContents.send).toHaveBeenCalledWith("setup:progress", { status: "error", message });
+    expect(mocks.windows[0].setSize).toHaveBeenCalledWith(400, 600);
+    expect(mocks.backend.start).not.toHaveBeenCalled();
+    expect(mocks.setup.runSetup).not.toHaveBeenCalled();
+  });
 
   it("minimizes the splash renderer's own window during setup", async () => {
     await import("./main");

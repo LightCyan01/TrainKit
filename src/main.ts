@@ -501,6 +501,18 @@ ipcMain.handle("fs:readImageOutput", async (event, imagePath: string, outputDire
 async function initialize() {
   await createSplashWindow();
   const setup = getSetupManager();
+  try {
+    setup.prepareBackend();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    splashWindow?.setSize(400, 600);
+    splashWindow?.center();
+    splashWindow?.webContents.send("setup:mode");
+    sendSetupProgress({ status: "error", message });
+    updateSplashStatus("Setup failed");
+    getLogger().error("setup", message);
+    return;
+  }
   if (setup.isSetupRequired()) {
     splashWindow?.setSize(400, 600);
     splashWindow?.center();
