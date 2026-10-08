@@ -479,9 +479,13 @@ ipcMain.handle("fs:readImageOutput", async (event, imagePath: string, outputDire
     throw new Error("Choose an image using the browse button.");
   }
   if (outputDirectory && !isGranted(outputDirectory)) throw new Error("Choose an output folder using the browse button.");
-  const adjacent = sidecarPaths(imagePath, path.dirname(imagePath), kind);
-  const canRead = (candidate: string) => isGranted(candidate) ||
-    (adjacent.includes(candidate) && canonicalPath(candidate) === path.resolve(candidate));
+  const selectedImage = canonicalPath(imagePath);
+  const adjacent = sidecarPaths(selectedImage, path.dirname(selectedImage), kind);
+  const canRead = (candidate: string) => {
+    if (isGranted(candidate)) return true;
+    const resolved = canonicalPath(candidate);
+    return adjacent.some(sidecar => path.relative(sidecar, resolved) === "");
+  };
   const generated = generatedOutputs[kind].get(path.resolve(imagePath));
   const matchingOutput = generated && outputDirectory &&
     canonicalPath(path.dirname(generated)) === canonicalPath(outputDirectory) ? generated : undefined;

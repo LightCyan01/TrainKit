@@ -109,6 +109,29 @@ describe("preview IPC", () => {
     await expect(invoke("fs:readImageOutput", image, "", "other")).rejects.toThrow("Invalid preview request");
   });
 
+  it("reads adjacent captions and tags through a junction without granting the whole folder", async () => {
+    const selected = path.join(directory, "selected");
+    const alias = path.join(directory, "alias");
+    fs.mkdirSync(selected);
+    fs.symlinkSync(selected, alias, process.platform === "win32" ? "junction" : "dir");
+    try {
+      const image = path.join(alias, "image.png");
+      fs.writeFileSync(image, "image");
+      fs.writeFileSync(path.join(alias, "image.txt"), "Existing caption");
+      fs.writeFileSync(path.join(alias, "image.tags.txt"), "existing, tags");
+      const otherImage = path.join(alias, "other.png");
+      fs.writeFileSync(otherImage, "other image");
+      fs.writeFileSync(path.join(alias, "other.txt"), "Other caption");
+      mocks.dialog.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [image] });
+      await invoke("dialog:openFile");
+      expect(await invoke("fs:readImageOutput", image, "", "caption")).toBe("Existing caption");
+      expect(await invoke("fs:readImageOutput", image, "", "tag")).toBe("existing, tags");
+      await expect(invoke("fs:readImageOutput", otherImage, "", "caption")).rejects.toThrow("Choose an image");
+    } finally {
+      fs.unlinkSync(alias);
+    }
+  });
+
   it("lists files in natural order without including directories named like images", async () => {
     fs.writeFileSync(path.join(directory, "image10.png"), "image");
     fs.writeFileSync(path.join(directory, "image2.png"), "image");
