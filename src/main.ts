@@ -254,7 +254,7 @@ backendManager.onEvent((event) => {
     const outputs = generatedOutputs[event.operation];
     if (event.status === "queued") outputs.clear();
     if (event.preview_source && event.preview_output) {
-      outputs.set(path.resolve(event.preview_source), event.preview_output);
+      outputs.set(canonicalPath(event.preview_source), event.preview_output);
     }
   }
   mainWindow?.webContents.send("backend:event", event);
@@ -486,7 +486,7 @@ ipcMain.handle("fs:readImageOutput", async (event, imagePath: string, outputDire
     const resolved = canonicalPath(candidate);
     return adjacent.some(sidecar => path.relative(sidecar, resolved) === "");
   };
-  const generated = generatedOutputs[kind].get(path.resolve(imagePath));
+  const generated = generatedOutputs[kind].get(selectedImage);
   const matchingOutput = generated && outputDirectory &&
     canonicalPath(path.dirname(generated)) === canonicalPath(outputDirectory) ? generated : undefined;
   return readImageOutput(imagePath, outputDirectory, kind, canRead, matchingOutput);

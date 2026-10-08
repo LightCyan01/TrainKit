@@ -167,6 +167,36 @@ describe("preview IPC", () => {
     expect(await invoke("fs:readImageOutput", source, output, "caption")).toBe("Old caption");
   });
 
+  it.each(["caption", "tag"] as const)("uses renamed outputs through linked input folders for %s", async (operation) => {
+    const selected = path.join(directory, "selected");
+    const alias = path.join(directory, "alias");
+    const output = path.join(directory, "output");
+    fs.mkdirSync(selected); fs.mkdirSync(output);
+    fs.symlinkSync(selected, alias, process.platform === "win32" ? "junction" : "dir");
+    try {
+      const image = path.join(alias, "image.png");
+      const suffix = operation === "caption" ? ".txt" : ".tags.txt";
+      const renamed = path.join(output, `image_1${suffix}`);
+      fs.writeFileSync(image, "image");
+      fs.writeFileSync(path.join(output, `image${suffix}`), "Old output");
+      fs.writeFileSync(renamed, "New output");
+      mocks.dialog.showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [alias] })
+        .mockResolvedValueOnce({ canceled: false, filePaths: [output] });
+      await invoke("dialog:openDirectory");
+      await invoke("dialog:openDirectory");
+      const event: JobEvent = {
+        type: "job", job_id: "linked-preview", operation, status: "completed",
+        current: 1, total: 1, percent: 100, message: "Saved output", manifest_path: null, error: null,
+        created_at: "2026-10-08T00:00:00+00:00", updated_at: "2026-10-08T00:00:01+00:00",
+        preview_source: fs.realpathSync.native(image), preview_output: renamed,
+      };
+      mocks.backend.onEvent.mock.calls[0][0](event);
+      expect(await invoke("fs:readImageOutput", image, output, operation)).toBe("New output");
+    } finally {
+      fs.unlinkSync(alias);
+    }
+  });
+
   it("bounds tall system thumbnails and falls back to the original if no thumbnail provider is available", async () => {
     if (process.platform !== "win32" && process.platform !== "darwin") return;
     const image = path.join(directory, "large.png");
