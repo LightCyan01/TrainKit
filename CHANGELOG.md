@@ -20,6 +20,7 @@ TrainKit 1.3.1 improves image previews, shows saved captions and tags, and makes
 ### Fixed
 
 - Existing caption and tag previews resolve Windows folder junctions.
+- Renamed caption and tag previews use canonical input paths and retain the newest result after event recovery.
 - Tagging closes images after inference and stops before saving when cancellation is requested.
 - Fully skipped tagging batches no longer load a model.
 - Preview folder listings exclude directories with image extensions, and failed image decoding shows a readable error.

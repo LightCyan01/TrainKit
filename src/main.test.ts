@@ -163,7 +163,7 @@ describe("preview IPC", () => {
     mocks.backend.onEvent.mock.calls[0][0](event);
     expect(await invoke("fs:readImageOutput", source, output, "caption")).toBe("New caption");
     expect(await invoke("fs:readImageOutput", source, otherOutput, "caption")).toBe("Other folder");
-    mocks.backend.onEvent.mock.calls[0][0]({ ...event, job_id: "next", status: "queued", created_at: "2026-10-08T00:00:02Z", preview_source: null, preview_output: null });
+    mocks.backend.onEvent.mock.calls[0][0]({ ...event, job_id: "next", status: "queued", created_at: "2026-10-08T00:00:02Z", updated_at: "2026-10-08T00:00:02Z", preview_source: null, preview_output: null });
     expect(await invoke("fs:readImageOutput", source, output, "caption")).toBe("Old caption");
   });
 
@@ -227,7 +227,7 @@ describe("preview IPC", () => {
       emit({ ...event, status: "queued", updated_at: event.created_at, preview_source: null, preview_output: null });
       expect(await invoke("fs:readImageOutput", source, directory, operation)).toBe("Newer output");
     }
-    emit({ ...newer, job_id: "next", status: "queued", created_at: "2026-10-08T00:00:04+00:00", preview_source: null, preview_output: null });
+    emit({ ...newer, job_id: "next", status: "queued", created_at: "2026-10-08T00:00:04+00:00", updated_at: "2026-10-08T00:00:04+00:00", preview_source: null, preview_output: null });
     emit(older);
     expect(await invoke("fs:readImageOutput", source, directory, operation)).toBe("Original output");
   });
