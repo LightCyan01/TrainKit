@@ -31,15 +31,16 @@ export class SetupManager {
   }
 
   isSetupRequired(): boolean {
-    const venvPath = path.join(this.runtimePath, ".venv");
+    const pythonPath = process.platform === "win32"
+      ? path.join(this.runtimePath, ".venv", "Scripts", "python.exe")
+      : path.join(this.runtimePath, ".venv", "bin", "python");
     const markerPath = path.join(this.runtimePath, ".setup_complete.json");
-    if (!fs.existsSync(venvPath) || !fs.existsSync(markerPath)) return true;
+    if (!fs.existsSync(pythonPath) || !fs.existsSync(markerPath)) return true;
     try {
       const marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as {
-        version?: string;
         lockHash?: string;
       };
-      return marker.version !== app.getVersion() || marker.lockHash !== this.lockHash();
+      return marker.lockHash !== this.lockHash();
     } catch {
       return true;
     }

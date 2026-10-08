@@ -62,6 +62,7 @@ const electronAPI = {
   isValidModelFolder: (path) => ipcRenderer.invoke("fs:isValidModelFolder", path),
   listImages: (directoryPath) => ipcRenderer.invoke("fs:listImages", directoryPath),
   readImageAsDataUrl: (imagePath) => ipcRenderer.invoke("fs:readImageAsDataUrl", imagePath),
+  readImageOutput: (imagePath, outputDirectory, kind) => ipcRenderer.invoke("fs:readImageOutput", imagePath, outputDirectory, kind),
   openExternal: (url) => ipcRenderer.invoke("shell:openExternal", url),
   openLogFile: () => ipcRenderer.invoke("log:openFile"),
   openLogsFolder: () => ipcRenderer.invoke("log:openFolder"),

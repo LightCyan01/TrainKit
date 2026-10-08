@@ -1,4 +1,4 @@
-import type { BackendEvent, BackendResponse, LogLevel, LogSource } from "./contracts";
+import type { BackendEvent, BackendResponse, ImageOutputKind, LogLevel, LogSource } from "./contracts";
 import type { CloudProvider, ProviderSettings, ProviderUpdate } from "./providers";
 
 export interface MainLogEntry {
@@ -64,6 +64,7 @@ export interface ElectronAPI {
   ) => Promise<{ valid: boolean; name?: string }>;
   listImages: (sourcePath: string) => Promise<string[]>;
   readImageAsDataUrl: (imagePath: string) => Promise<string | null>;
+  readImageOutput: (imagePath: string, outputDirectory: string, kind: ImageOutputKind) => Promise<string | null>;
   openExternal: (url: string) => Promise<void>;
   openLogFile: () => Promise<void>;
   openLogsFolder: () => Promise<void>;

@@ -191,7 +191,7 @@ export function CaptionPanel({ isBackendOnline, providerSettings, onOpenApi }: {
             <Button size="lg" variant="destructive" onClick={cancel} disabled={!isActive}><Square className="h-4 w-4" />Cancel</Button>
           </div>
         </section>
-        <ImagePreview directoryPath={loadPath} className="min-h-[420px]" />
+        <ImagePreview directoryPath={loadPath} outputKind="caption" outputDirectory={savePath} refreshKey={`${job?.job_id}:${job?.current}:${job?.status}`} />
       </div>
     </div>
   );

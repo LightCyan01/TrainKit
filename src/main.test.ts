@@ -1,11 +1,17 @@
 import type { BrowserWindow } from "electron";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { JobEvent } from "./types/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = await vi.hoisted(async () => {
   const { EventEmitter } = await import("node:events");
   return {
     windows: [] as BrowserWindow[],
-    handlers: new Map<string, (event: { sender: object }) => unknown>(),
+    handlers: new Map<string, (event: { sender: object }, ...args: unknown[]) => unknown>(),
+    dialog: { showOpenDialog: vi.fn() },
+    thumbnail: vi.fn(),
     app: Object.assign(new EventEmitter(), {
       requestSingleInstanceLock: () => true,
       whenReady: async (): Promise<void> => undefined,
@@ -49,10 +55,109 @@ vi.mock("electron", async () => {
   }
   return {
     app: mocks.app, BrowserWindow: Window,
-    ipcMain: { handle: (channel: string, handler: (event: { sender: object }) => unknown) => mocks.handlers.set(channel, handler) },
+    ipcMain: { handle: (channel: string, handler: (event: { sender: object }, ...args: unknown[]) => unknown) => mocks.handlers.set(channel, handler) },
     session: { defaultSession: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), setDevicePermissionHandler: vi.fn() } },
-    dialog: {}, shell: {}, safeStorage: {},
+    dialog: mocks.dialog, nativeImage: { createThumbnailFromPath: mocks.thumbnail }, shell: {}, safeStorage: {},
   };
+});
+
+describe("preview IPC", () => {
+  let directory: string;
+  let sender: object;
+  const invoke = (channel: string, ...args: unknown[]) => mocks.handlers.get(channel)!({ sender }, ...args);
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.app.removeAllListeners();
+    mocks.handlers.clear();
+    mocks.windows.length = 0;
+    mocks.setup.isSetupRequired.mockReturnValue(false);
+    mocks.backend.start.mockResolvedValue(undefined);
+    mocks.backend.waitForReady.mockResolvedValue(true);
+    vi.stubGlobal("__dirname", "/test/build");
+    vi.stubGlobal("MAIN_WINDOW_VITE_DEV_SERVER_URL", undefined);
+    vi.stubGlobal("MAIN_WINDOW_VITE_NAME", "main_window");
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), "trainkit-preview-"));
+    await import("./main");
+    await vi.waitFor(() => expect(mocks.windows).toHaveLength(2));
+    sender = mocks.windows[1].webContents;
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  it("allows only exact adjacent sidecars for an individually selected image", async () => {
+    const image = path.join(directory, "image.png");
+    fs.writeFileSync(image, "image");
+    fs.writeFileSync(path.join(directory, "image.txt"), "Existing caption");
+    mocks.dialog.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [image] });
+    await invoke("dialog:openFile");
+    expect(await invoke("fs:readImageOutput", image, "", "caption")).toBe("Existing caption");
+    await expect(invoke("fs:readImageOutput", path.join(directory, "other.png"), "", "caption")).rejects.toThrow("Choose an image");
+    await expect(mocks.handlers.get("fs:readImageOutput")!({ sender: {} }, image, "", "caption")).rejects.toThrow("untrusted renderer");
+  });
+
+  it("rejects unapproved output folders and invalid output kinds", async () => {
+    const image = path.join(directory, "image.png");
+    fs.writeFileSync(image, "image");
+    const output = path.join(directory, "output");
+    fs.mkdirSync(output);
+    mocks.dialog.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [image] });
+    await invoke("dialog:openFile");
+    await expect(invoke("fs:readImageOutput", image, output, "tag")).rejects.toThrow("Choose an output folder");
+    await expect(invoke("fs:readImageOutput", image, "", "other")).rejects.toThrow("Invalid preview request");
+  });
+
+  it("lists files in natural order without including directories named like images", async () => {
+    fs.writeFileSync(path.join(directory, "image10.png"), "image");
+    fs.writeFileSync(path.join(directory, "image2.png"), "image");
+    fs.mkdirSync(path.join(directory, "fake.png"));
+    mocks.dialog.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [directory] });
+    await invoke("dialog:openDirectory");
+    expect(await invoke("fs:listImages", directory)).toEqual([path.join(directory, "image2.png"), path.join(directory, "image10.png")]);
+  });
+
+  it("uses generated renamed output only for its matching source and selected output folder", async () => {
+    const source = path.join(directory, "image.png");
+    const output = path.join(directory, "output");
+    const otherOutput = path.join(directory, "other-output");
+    fs.writeFileSync(source, "image");
+    fs.mkdirSync(output); fs.mkdirSync(otherOutput);
+    fs.writeFileSync(path.join(output, "image.txt"), "Old caption");
+    fs.writeFileSync(path.join(output, "image_1.txt"), "New caption");
+    fs.writeFileSync(path.join(otherOutput, "image.txt"), "Other folder");
+    mocks.dialog.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [directory] });
+    await invoke("dialog:openDirectory");
+    const { isJobEvent } = await import("./types/contracts");
+    const event: JobEvent = {
+      type: "job", job_id: "preview", operation: "caption", status: "running",
+      current: 1, total: 1, percent: 100, message: "Captioned image.png", manifest_path: null, error: null,
+      created_at: "2026-10-08T00:00:00Z", updated_at: "2026-10-08T00:00:01Z",
+      preview_source: source, preview_output: path.join(output, "image_1.txt"),
+    };
+    expect(isJobEvent(event)).toBe(true);
+    mocks.backend.onEvent.mock.calls[0][0](event);
+    expect(await invoke("fs:readImageOutput", source, output, "caption")).toBe("New caption");
+    expect(await invoke("fs:readImageOutput", source, otherOutput, "caption")).toBe("Other folder");
+    mocks.backend.onEvent.mock.calls[0][0]({ ...event, status: "queued", preview_source: null, preview_output: null });
+    expect(await invoke("fs:readImageOutput", source, output, "caption")).toBe("Old caption");
+  });
+
+  it("bounds tall system thumbnails and falls back to the original if no thumbnail provider is available", async () => {
+    if (process.platform !== "win32" && process.platform !== "darwin") return;
+    const image = path.join(directory, "large.png");
+    fs.writeFileSync(image, Buffer.alloc(1024 * 1024 + 1));
+    mocks.dialog.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [image] });
+    await invoke("dialog:openFile");
+    const resize = vi.fn(() => ({ toDataURL: () => "data:image/png;base64,thumbnail" }));
+    mocks.thumbnail.mockResolvedValue({ getSize: () => ({ width: 840, height: 1680 }), isEmpty: () => false, resize });
+    expect(await invoke("fs:readImageAsDataUrl", image)).toBe("data:image/png;base64,thumbnail");
+    expect(resize).toHaveBeenCalledWith({ width: 420, height: 840 });
+    mocks.thumbnail.mockRejectedValue(new Error("No thumbnail provider"));
+    const fallback = await invoke("fs:readImageAsDataUrl", image) as string;
+    expect(fallback).toBe(`data:image/png;base64,${fs.readFileSync(image).toString("base64")}`);
+  });
 });
 vi.mock("./backend-manager", () => ({
   getBackendManager: () => mocks.backend,

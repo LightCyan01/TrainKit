@@ -146,7 +146,12 @@ async def process_caption_batch(
         if output_manifest is not None:
             manifest.save(output_manifest)
         await context.progress(
-            completed, total, f"Captioned {Path(item.source).name}", output_manifest
+            completed,
+            total,
+            f"Captioned {Path(item.source).name}",
+            output_manifest,
+            preview_source=item.source if item.status == "completed" else None,
+            preview_output=item.destination if item.status == "completed" else None,
         )
     if failures:
         detail = f": {first_error}" if first_error else ""

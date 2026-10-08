@@ -143,7 +143,7 @@
       .status {
         margin-top: 16px;
         font-size: 11px;
-        color: #52525b;
+        color: #a1a1aa;
         letter-spacing: 0.1em;
         text-transform: uppercase;
         animation: fadeIn 0.5s ease-out 0.6s both;
@@ -153,6 +153,17 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+
+      .setup-hint {
+        max-width: 340px;
+        margin-top: 10px;
+        color: #a1a1aa;
+        font-size: 12px;
+        line-height: 1.5;
+        text-align: center;
+      }
+
+      [hidden] { display: none; }
 
       .console-container {
         margin-top: 16px;
@@ -356,7 +367,8 @@
 
       <div class="loader-container">
         <div class="loader"></div>
-        <p class="status" id="status">Initializing...</p>
+        <p class="status" id="status" role="status">Initializing...</p>
+        <p class="setup-hint" id="setupHint" hidden>Large packages can take several minutes to download and install.</p>
       </div>
 
       <div class="console-container" id="consoleContainer">
@@ -369,6 +381,7 @@
       const consoleEl = document.getElementById("console");
       const consoleContainer = document.getElementById("consoleContainer");
       const statusEl = document.getElementById("status");
+      const setupHint = document.getElementById("setupHint");
       const container = document.getElementById("container");
 
       function addConsoleLine(message, type = "default") {
@@ -376,6 +389,7 @@
         line.className = `console-line ${type}`;
         line.textContent = message;
         consoleEl.appendChild(line);
+        if (consoleEl.childElementCount > 200) consoleEl.firstElementChild.remove();
         consoleEl.scrollTop = consoleEl.scrollHeight;
       }
 
@@ -399,6 +413,7 @@
 
         window.electronAPI.onSplashStatus((status) => {
           statusEl.textContent = status;
+          setupHint.hidden = true;
           if (status.toLowerCase().includes("failed")) {
             showErrorState();
           }
@@ -406,6 +421,7 @@
 
         window.electronAPI.onSetupMode(() => {
           container.classList.add("setup-state");
+          setupHint.hidden = false;
           showConsole();
         });
 
@@ -415,9 +431,11 @@
         });
 
         window.electronAPI.onSetupProgress((data) => {
-          if (data.message.length < 60 && !data.message.includes('UV_LINK')) {
-            statusEl.textContent = data.message;
-          }
+          const installing = data.status === "installing" || data.status === "downloading";
+          setupHint.hidden = !installing;
+          statusEl.textContent = installing ? "Setting up dependencies..." :
+            data.status === "checking" ? "Checking prerequisites..." :
+            data.status === "complete" ? "Setup complete" : "Setup failed. See details below.";
           if (data.status === "error") {
             showErrorState();
           }

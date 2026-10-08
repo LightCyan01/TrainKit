@@ -9,7 +9,7 @@ from typing import Any
 import torch
 from transformers import AutoImageProcessor, AutoModelForImageClassification
 
-from core.exceptions import InvalidPathError, ModelLoadError, ProcessingError
+from core.exceptions import InvalidPathError, JobCancelledError, ModelLoadError, ProcessingError
 from core.jobs import JobContext
 from models import TagRequest
 from service.manifest import (
@@ -184,8 +184,9 @@ class ImageTaggingService:
         completed = sum(item.status in {"completed", "skipped"} for item in manifest.items)
         message = "Tag manifest ready" if output_manifest is not None else "Tag plan ready"
         await context.progress(completed, total, message, output_manifest)
-        if request.dry_run:
+        if request.dry_run or completed == total:
             return output_manifest
+        context.raise_if_cancelled()
         await self.load()
 
         failures = 0
@@ -196,7 +197,13 @@ class ImageTaggingService:
             context.raise_if_cancelled()
             try:
                 image = await asyncio.to_thread(load_rgb_image, Path(item.source))
-                tags = await asyncio.to_thread(self._tag, image, request.threshold, request.top_k)
+                try:
+                    tags = await asyncio.to_thread(
+                        self._tag, image, request.threshold, request.top_k
+                    )
+                finally:
+                    image.close()
+                context.raise_if_cancelled()
                 destination = Path(item.destination)
                 tag_output = str(item.metadata.get("tag_output", request.output))
                 if tag_output in {"json", "both"}:
@@ -218,6 +225,8 @@ class ImageTaggingService:
                     )
                 item.status = "completed"
                 item.metadata["tag_count"] = len(tags)
+            except JobCancelledError:
+                raise
             except Exception as exc:
                 item.status = "failed"
                 item.error = str(exc)
@@ -227,7 +236,12 @@ class ImageTaggingService:
             if output_manifest is not None:
                 manifest.save(output_manifest)
             await context.progress(
-                completed, total, f"Tagged {Path(item.source).name}", output_manifest
+                completed,
+                total,
+                f"Tagged {Path(item.source).name}",
+                output_manifest,
+                preview_source=item.source if item.status == "completed" else None,
+                preview_output=item.destination if item.status == "completed" else None,
             )
         if failures:
             detail = f": {first_error}" if first_error else ""

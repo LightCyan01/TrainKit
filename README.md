@@ -25,15 +25,14 @@
 
 TrainKit prepares individual images or image folders with local captioning, upscaling, tagging, and renaming. Claude and OpenAI captioning use your own API keys. You can cancel batches and save progress in a manifest to resume later.
 
-## What's new in 1.3.0
+## What's new in 1.3.1
 
-- Claude and OpenAI captioning through your own API keys, alongside local models.
-- An API tab to save session keys, remember keys with OS encryption, choose vision models, and test key connections.
-- Cloud requests can be cancelled. Failed requests stop the batch without automatic paid retries.
-- Recovered progress after reconnecting, safer model switching and shutdown, and fixes for batch file handling.
-- Updated Electron and packaging dependencies with a clean dependency audit.
+- Image previews fit the image without stretching to the form's height.
+- Saved captions and tags appear below the preview and refresh as images finish processing.
+- Setup explains that large packages can take several minutes. Existing dependencies are reused when they have not changed.
+- Tagging releases images after inference and avoids loading a model when every output is skipped.
 
-See the [complete 1.3.0 changelog](CHANGELOG.md#130---2026-10-07) for details.
+See the [complete 1.3.1 changelog](CHANGELOG.md#131---2026-10-08) for details.
 
 ## Features
 
@@ -104,7 +103,7 @@ See [model support](docs/model-support.md) for model layouts and NCNN assumption
 
 ## Project status
 
-Version 1.3.0 adds cloud captioning and improves batch and desktop reliability. New feature proposals and model-compatibility reports are welcome through GitHub issues.
+Version 1.3.1 improves previews, setup, and tagging. New feature proposals and model-compatibility reports are welcome through GitHub issues.
 
 ## Contributing and security
 
