@@ -163,7 +163,7 @@ describe("preview IPC", () => {
     mocks.backend.onEvent.mock.calls[0][0](event);
     expect(await invoke("fs:readImageOutput", source, output, "caption")).toBe("New caption");
     expect(await invoke("fs:readImageOutput", source, otherOutput, "caption")).toBe("Other folder");
-    mocks.backend.onEvent.mock.calls[0][0]({ ...event, status: "queued", preview_source: null, preview_output: null });
+    mocks.backend.onEvent.mock.calls[0][0]({ ...event, job_id: "next", status: "queued", created_at: "2026-10-08T00:00:02Z", preview_source: null, preview_output: null });
     expect(await invoke("fs:readImageOutput", source, output, "caption")).toBe("Old caption");
   });
 
@@ -195,6 +195,41 @@ describe("preview IPC", () => {
     } finally {
       fs.unlinkSync(alias);
     }
+  });
+
+  it.each(["caption", "tag"] as const)("retains newest saved outputs when older %s jobs are recovered", async (operation) => {
+    const source = path.join(directory, "image.png");
+    const suffix = operation === "caption" ? ".txt" : ".tags.txt";
+    const olderOutput = path.join(directory, `image_1${suffix}`);
+    const newerOutput = path.join(directory, `image_2${suffix}`);
+    fs.writeFileSync(source, "image");
+    fs.writeFileSync(path.join(directory, `image${suffix}`), "Original output");
+    fs.writeFileSync(olderOutput, "Older output");
+    fs.writeFileSync(newerOutput, "Newer output");
+    mocks.dialog.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [directory] });
+    await invoke("dialog:openDirectory");
+    const older: JobEvent = {
+      type: "job", job_id: "older", operation, status: "completed",
+      current: 1, total: 1, percent: 100, message: "Saved output", manifest_path: null, error: null,
+      created_at: "2026-10-08T00:00:00+00:00", updated_at: "2026-10-08T00:00:01+00:00",
+      preview_source: source, preview_output: olderOutput,
+    };
+    const newer: JobEvent = {
+      ...older, job_id: "newer", preview_output: newerOutput,
+      created_at: "2026-10-08T00:00:02+00:00", updated_at: "2026-10-08T00:00:03+00:00",
+    };
+    const emit = mocks.backend.onEvent.mock.calls[0][0];
+    emit(older);
+    emit(newer);
+    emit(older);
+    expect(await invoke("fs:readImageOutput", source, directory, operation)).toBe("Newer output");
+    for (const event of [older, newer]) {
+      emit({ ...event, status: "queued", updated_at: event.created_at, preview_source: null, preview_output: null });
+      expect(await invoke("fs:readImageOutput", source, directory, operation)).toBe("Newer output");
+    }
+    emit({ ...newer, job_id: "next", status: "queued", created_at: "2026-10-08T00:00:04+00:00", preview_source: null, preview_output: null });
+    emit(older);
+    expect(await invoke("fs:readImageOutput", source, directory, operation)).toBe("Original output");
   });
 
   it("bounds tall system thumbnails and falls back to the original if no thumbnail provider is available", async () => {

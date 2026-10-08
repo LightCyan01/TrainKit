@@ -17,7 +17,7 @@ import { ProviderSettingsStore, testProviderKey } from "./provider-settings";
 import { isCloudProvider, type CloudProvider, type ProviderUpdate } from "./types/providers";
 import { canonicalPath } from "./path-grants";
 import { readImageOutput, sidecarPaths } from "./image-output";
-import { isJobEvent, type ImageOutputKind } from "./types/contracts";
+import { isJobEvent, type ImageOutputKind, type JobEvent } from "./types/contracts";
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) app.quit();
@@ -35,6 +35,7 @@ const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".bmp"]);
 const MODEL_EXTENSIONS = new Set([".safetensors", ".param", ".bin"]);
 const IMAGE_PREVIEW_LIMIT = 32 * 1024 * 1024;
 const generatedOutputs: Record<ImageOutputKind, Map<string, string>> = { caption: new Map(), tag: new Map() };
+const latestPreviewJobs = new Map<ImageOutputKind, JobEvent>();
 const MIME_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -252,8 +253,13 @@ function sendSetupProgress(progress: SetupProgress) {
 backendManager.onEvent((event) => {
   if (isJobEvent(event) && (event.operation === "caption" || event.operation === "tag")) {
     const outputs = generatedOutputs[event.operation];
-    if (event.status === "queued") outputs.clear();
-    if (event.preview_source && event.preview_output) {
+    let latestJob = latestPreviewJobs.get(event.operation);
+    if (!latestJob || event.created_at > latestJob.created_at) {
+      latestJob = event;
+      latestPreviewJobs.set(event.operation, latestJob);
+      outputs.clear();
+    }
+    if (event.job_id === latestJob.job_id && event.preview_source && event.preview_output) {
       outputs.set(canonicalPath(event.preview_source), event.preview_output);
     }
   }
