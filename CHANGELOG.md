@@ -2,6 +2,32 @@
 
 All notable TrainKit changes are documented here. TrainKit follows semantic versioning.
 
+## [1.3.1] - 2026-10-08
+
+TrainKit 1.3.1 improves image previews, shows saved captions and tags, and makes dependency setup clearer.
+
+### Added
+
+- Captions and tags below the image preview, including existing sidecars and outputs renamed on collision. Saved results refresh during processing.
+
+### Changed
+
+- Image previews follow the image's proportions and stay within a bounded height across all four operations.
+- Large images use bounded system thumbnails when available, reducing the data sent to the renderer.
+- Setup keeps a visible explanation while large dependencies download and install; package details remain in the log.
+- Existing dependency environments are reused when the lockfile matches, including across app version changes.
+
+### Fixed
+
+- Existing caption and tag previews resolve Windows folder junctions.
+- Renamed caption and tag previews use canonical input paths and retain the newest result after event recovery.
+- The setup loading bar stays centered, and its window has a dedicated draggable area.
+- Missing packaged backend files are restored before startup; deleted environments are rebuilt without removing existing models.
+- Tagging closes images after inference and stops before saving when cancellation is requested.
+- Fully skipped tagging batches no longer load a model.
+- Preview folder listings exclude directories with image extensions, and failed image decoding shows a readable error.
+- Setup notices a missing Python interpreter, and its visible log stays bounded during long installs.
+
 ## [1.3.0] - 2026-10-07
 
 TrainKit 1.3.0 adds Claude and OpenAI captioning through your own API keys and improves batch safety and desktop reliability.

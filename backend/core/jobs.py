@@ -34,6 +34,8 @@ class JobRecord:
     error: str | None
     created_at: datetime
     updated_at: datetime
+    preview_source: str | None = None
+    preview_output: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
@@ -66,6 +68,9 @@ class JobContext:
         total: int,
         message: str,
         manifest_path: str | Path | None = None,
+        *,
+        preview_source: str | None = None,
+        preview_output: str | None = None,
     ):
         self.raise_if_cancelled()
         await self.manager.update(
@@ -74,6 +79,8 @@ class JobContext:
             total=total,
             message=message,
             manifest_path=str(manifest_path) if manifest_path else None,
+            preview_source=preview_source,
+            preview_output=preview_output,
         )
 
 

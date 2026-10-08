@@ -1,258 +1,132 @@
-import {
-  useState,
-  useEffect,
-  useCallback,
-  memo,
-  type KeyboardEvent as ReactKeyboardEvent,
-} from "react";
+import { useEffect, useState, memo, type KeyboardEvent } from "react";
+import { ChevronLeft, ChevronRight, Image as ImageIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Image as ImageIcon,
-  Loader2,
-} from "lucide-react";
+import type { ImageOutputKind } from "@/types/contracts";
 
 interface ImagePreviewProps {
   directoryPath: string;
   className?: string;
-  currentIndex?: number;
-  onIndexChange?: (index: number) => void;
+  outputKind?: ImageOutputKind;
+  outputDirectory?: string;
+  refreshKey?: string;
 }
 
 export const ImagePreview = memo(function ImagePreview({
   directoryPath,
   className,
-  currentIndex: externalIndex,
-  onIndexChange,
+  outputKind,
+  outputDirectory = "",
+  refreshKey,
 }: ImagePreviewProps) {
   const [images, setImages] = useState<string[]>([]);
-  const [internalIndex, setInternalIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingImage, setIsLoadingImage] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
-
-  // Use external index otherwise use internal state
-  const isControlled = externalIndex !== undefined && onIndexChange !== undefined;
-  const currentIndex = isControlled ? externalIndex : internalIndex;
-  const setCurrentIndex = useCallback((indexOrFn: number | ((prev: number) => number)) => {
-    if (isControlled) {
-      const newIndex = typeof indexOrFn === "function" ? indexOrFn(externalIndex) : indexOrFn;
-      onIndexChange(newIndex);
-    } else {
-      setInternalIndex(indexOrFn);
-    }
-  }, [isControlled, externalIndex, onIndexChange]);
-
-  // Load images list when directory changes
-  useEffect(() => {
-    if (!directoryPath) {
-      setImages([]);
-      if (!isControlled) setInternalIndex(0);
-      setImageDataUrl(null);
-      setIsLoading(false);
-      setError(null);
-      return;
-    }
-
-    let cancelled = false;
-    const loadImages = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const imageList = await window.electronAPI.listImages(directoryPath);
-        if (cancelled) return;
-        setImages(imageList);
-        // Only reset index if not controlled and directory changed
-        if (!isControlled) setInternalIndex(0);
-      } catch {
-        if (cancelled) return;
-        setError("Failed to load images");
-        setImages([]);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    };
-
-    void loadImages();
-    return () => {
-      cancelled = true;
-    };
-  }, [directoryPath, isControlled]);
-
-  // Load current image as data URL
-  useEffect(() => {
-    const img = images[currentIndex];
-    if (!img) {
-      setImageDataUrl(null);
-      setIsLoadingImage(false);
-      return;
-    }
-
-    let cancelled = false;
-    const loadImage = async () => {
-      setIsLoadingImage(true);
-      try {
-        const dataUrl = await window.electronAPI.readImageAsDataUrl(img);
-        if (!cancelled) setImageDataUrl(dataUrl);
-      } catch {
-        if (!cancelled) setImageDataUrl(null);
-      } finally {
-        if (!cancelled) setIsLoadingImage(false);
-      }
-    };
-
-    void loadImage();
-    return () => {
-      cancelled = true;
-    };
-  }, [images, currentIndex]);
-
-  const handleKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        setCurrentIndex((previous) =>
-          previous > 0 ? previous - 1 : images.length - 1,
-        );
-      } else if (event.key === "ArrowRight") {
-        event.preventDefault();
-        setCurrentIndex((previous) =>
-          previous < images.length - 1 ? previous + 1 : 0,
-        );
-      }
-    },
-    [images.length, setCurrentIndex],
-  );
-
-  const goToPrevious = useCallback(() => {
-    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
-  }, [images.length, setCurrentIndex]);
-
-  const goToNext = useCallback(() => {
-    setCurrentIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
-  }, [images.length, setCurrentIndex]);
-
+  const [error, setError] = useState("");
+  const [image, setImage] = useState<{ path: string; dataUrl: string | null } | null>(null);
+  const [output, setOutput] = useState<{ key: string; text: string | null; error: string } | null>(null);
   const currentImage = images[currentIndex];
-  const fileName = currentImage ? currentImage.split(/[\\/]/).pop() : "";
+  const fileName = currentImage?.split(/[\\/]/).pop() ?? "";
+  const imageDataUrl = image && image.path === currentImage ? image.dataUrl : null;
+  const isLoadingImage = Boolean(currentImage && image?.path !== currentImage);
+  const outputKey = JSON.stringify([currentImage, outputDirectory, outputKind]);
+  const currentOutput = output?.key === outputKey ? output : null;
 
-  if (!directoryPath) {
-    return (
-      <div
-        className={cn(
-          "flex items-center justify-center h-full bg-dark/50 border border-border rounded",
-          className,
-        )}
-      >
-        <div className="flex flex-col items-center gap-2 text-muted-foreground">
-          <ImageIcon className="h-12 w-12 opacity-30" />
-          <span className="text-xs">Select an image or folder to preview</span>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    let cancelled = false;
+    setImages([]);
+    setCurrentIndex(0);
+    setError("");
+    setIsLoading(Boolean(directoryPath));
+    if (!directoryPath) return;
+    void window.electronAPI.listImages(directoryPath).then((list) => {
+      if (!cancelled) setImages(list);
+    }).catch(() => {
+      if (!cancelled) setError("Failed to load images.");
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [directoryPath]);
 
-  if (isLoading) {
-    return (
-      <div
-        className={cn(
-          "flex items-center justify-center h-full bg-dark/50 border border-border rounded",
-          className,
-        )}
-      >
-        <div className="text-xs text-muted-foreground">Loading images...</div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    let cancelled = false;
+    setImage(null);
+    if (!currentImage) return;
+    void window.electronAPI.readImageAsDataUrl(currentImage).then((dataUrl) => {
+      if (!cancelled) setImage({ path: currentImage, dataUrl });
+    }).catch(() => {
+      if (!cancelled) setImage({ path: currentImage, dataUrl: null });
+    });
+    return () => { cancelled = true; };
+  }, [currentImage]);
 
-  if (error) {
-    return (
-      <div
-        className={cn(
-          "flex items-center justify-center h-full bg-dark/50 border border-border rounded",
-          className,
-        )}
-      >
-        <div className="text-xs text-destructive">{error}</div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentImage || !outputKind) return;
+    void window.electronAPI.readImageOutput(currentImage, outputDirectory, outputKind).then((text) => {
+      if (!cancelled) setOutput({ key: outputKey, text, error: "" });
+    }).catch((caught) => {
+      if (!cancelled) setOutput({ key: outputKey, text: null, error: caught instanceof Error ? caught.message : "Saved output could not be read." });
+    });
+    return () => { cancelled = true; };
+  }, [currentImage, outputDirectory, outputKind, outputKey, refreshKey]);
 
-  if (images.length === 0) {
-    return (
-      <div
-        className={cn(
-          "flex items-center justify-center h-full bg-dark/50 border border-border rounded",
-          className,
-        )}
-      >
-        <div className="flex flex-col items-center gap-2 text-muted-foreground">
-          <ImageIcon className="h-12 w-12 opacity-30" />
-          <span className="text-xs">No supported images found</span>
-        </div>
+  const previous = () => setCurrentIndex(index => (index + images.length - 1) % images.length);
+  const next = () => setCurrentIndex(index => (index + 1) % images.length);
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    if (event.target instanceof HTMLElement && event.target.closest("[data-saved-output]")) return;
+    event.preventDefault();
+    if (event.key === "ArrowLeft") previous();
+    else next();
+  };
+
+  const notice = !directoryPath ? "Select an image or folder to preview"
+    : isLoading ? "Loading images..."
+    : error || (images.length === 0 ? "No supported images found" : "");
+  if (notice) {
+    return <div className={cn("flex min-h-[320px] min-w-0 items-center justify-center self-start rounded border border-border bg-dark/50 p-5", className)}>
+      <div className="flex flex-col items-center gap-3 text-muted-foreground" role={error ? "alert" : "status"}>
+        <ImageIcon className="h-10 w-10 opacity-40" aria-hidden="true" />
+        <p className={cn("text-sm", error && "text-foreground")}>{notice}</p>
       </div>
-    );
+    </div>;
   }
 
   return (
-    <div
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
+    <div tabIndex={0} onKeyDown={handleKeyDown}
       aria-label="Image preview; use left and right arrow keys to navigate"
-      className={cn(
-        "flex flex-col h-full bg-dark/50 border border-border rounded overflow-hidden focus:outline-none focus:border-primary/50",
-        className,
-      )}
-    >
-      {/* Image container */}
-      <div className="relative flex-1 flex items-center justify-center overflow-hidden">
-        {isLoadingImage ? (
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        ) : imageDataUrl ? (
-          <img
-            src={imageDataUrl}
-            alt={fileName}
-            className="max-w-full max-h-full object-contain"
-          />
-        ) : (
-          <div className="text-xs text-muted-foreground">
-            Failed to load image
-          </div>
-        )}
-
-        {/* Navigation arrows */}
-        {images.length > 1 && (
-          <>
-            <button
-              onClick={goToPrevious}
-              className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 hover:bg-black/70 
-                rounded-full text-white transition-colors"
-              aria-label="Previous image"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <button
-              onClick={goToNext}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 hover:bg-black/70 
-                rounded-full text-white transition-colors"
-              aria-label="Next image"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </>
-        )}
+      className={cn("min-w-0 self-start space-y-3 rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary", className)}>
+      <div className={cn("relative mx-auto w-fit max-w-full overflow-hidden rounded border border-border bg-dark/50", !imageDataUrl && "flex min-h-[280px] w-full items-center justify-center")}>
+        {isLoadingImage ? <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+          <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />Loading image...
+        </div> : imageDataUrl ? <img key={currentImage} src={imageDataUrl} alt={fileName} decoding="async"
+          onError={() => setImage({ path: currentImage, dataUrl: null })}
+          className="block h-auto w-auto max-h-[min(60vh,640px,calc(100vh-360px))] max-w-full" />
+          : <p className="text-sm text-muted-foreground" role="status">Failed to load image.</p>}
+        {images.length > 1 && <>
+          <button type="button" onClick={previous} aria-label="Previous image"
+            className="absolute left-2 top-1/2 -translate-y-1/2 rounded bg-black/80 p-2 text-white hover:bg-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+            <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+          </button>
+          <button type="button" onClick={next} aria-label="Next image"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-black/80 p-2 text-white hover:bg-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+            <ChevronRight className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </>}
       </div>
-
-      {/* Footer with file info */}
-      <div className="flex items-center justify-between px-3 py-2 border-t border-border bg-dark/30">
-        <span className="text-[10px] text-muted-foreground truncate max-w-[60%]">
-          {fileName}
-        </span>
-        <span className="text-[10px] text-muted-foreground">
-          {currentIndex + 1} / {images.length}
-        </span>
+      <div className="flex items-center justify-between gap-3 px-1 text-xs text-muted-foreground">
+        <span className="min-w-0 truncate" title={fileName}>{fileName}</span>
+        <span className="shrink-0">{currentIndex + 1} / {images.length}</span>
       </div>
+      {outputKind && <section data-saved-output tabIndex={0} aria-live="polite"
+        className="space-y-2 border border-border bg-card/60 p-4 focus-visible:outline-2 focus-visible:outline-primary">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{outputKind === "caption" ? "Caption" : "Tags"}</h3>
+        <p tabIndex={0} className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-relaxed select-text focus-visible:outline-2 focus-visible:outline-primary">
+          {!currentOutput ? "Reading saved output..." : currentOutput.error ||
+            (currentOutput.text === null ? `No saved ${outputKind === "caption" ? "caption" : "tags"} for this image.` : currentOutput.text || "The saved output is empty.")}
+        </p>
+      </section>}
     </div>
   );
 });

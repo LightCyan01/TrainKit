@@ -72,16 +72,16 @@ export function TagPanel({ isBackendOnline }: { isBackendOnline: boolean }) {
           <ModelStatus modelName={modelPath.split(/[\\/]/).pop()} isLoaded={modelValid} details={modelValid ? "Valid image-classification model" : "Select a folder containing config.json"} />
           <div className="grid gap-4 md:grid-cols-2"><Input label="Input image or folder" value={loadPath} onChange={setLoadPath} type="path" onBrowse={() => chooseDirectory(setLoadPath)} onBrowseFile={chooseImage} disabled={isActive} /><Input label="Output tags" value={savePath} onChange={setSavePath} type="path" onBrowse={() => chooseDirectory(setSavePath)} disabled={isActive} /></div>
           <div className="grid gap-4 sm:grid-cols-3">
-            <label className="space-y-2"><span className="text-[10px] uppercase text-muted-foreground">Threshold</span><input type="number" min={0} max={1} step={0.01} value={threshold} onChange={(event) => setThreshold(Number(event.target.value))} className="w-full border border-border bg-input px-3 py-2 text-sm" /></label>
-            <label className="space-y-2"><span className="text-[10px] uppercase text-muted-foreground">Top K</span><input type="number" min={1} max={1000} value={topK} onChange={(event) => setTopK(Number(event.target.value))} className="w-full border border-border bg-input px-3 py-2 text-sm" /></label>
-            <label className="space-y-2"><span className="text-[10px] uppercase text-muted-foreground">Sidecars</span><select value={output} onChange={(event) => setOutput(event.target.value as typeof output)} className="w-full border border-border bg-input px-3 py-2 text-sm"><option value="both">JSON + TXT</option><option value="json">JSON</option><option value="txt">TXT</option></select></label>
+            <label className="space-y-2"><span className="text-[10px] uppercase text-muted-foreground">Threshold</span><input type="number" min={0} max={1} step={0.01} value={threshold} onChange={(event) => setThreshold(Number(event.target.value))} disabled={isActive} className="w-full border border-border bg-input px-3 py-2 text-sm" /></label>
+            <label className="space-y-2"><span className="text-[10px] uppercase text-muted-foreground">Top K</span><input type="number" min={1} max={1000} value={topK} onChange={(event) => setTopK(Number(event.target.value))} disabled={isActive} className="w-full border border-border bg-input px-3 py-2 text-sm" /></label>
+            <label className="space-y-2"><span className="text-[10px] uppercase text-muted-foreground">Sidecars</span><select value={output} onChange={(event) => setOutput(event.target.value as typeof output)} disabled={isActive} className="w-full border border-border bg-input px-3 py-2 text-sm"><option value="both">JSON + TXT</option><option value="json">JSON</option><option value="txt">TXT</option></select></label>
           </div>
           <BatchOptions collisionPolicy={collisionPolicy} onCollisionPolicyChange={setCollisionPolicy} saveManifest={saveManifest} onSaveManifestChange={setSaveManifest} resumeManifestPath={resumeManifestPath} onResumeManifestPathChange={setResumeManifestPath} disabled={isActive} />
           {error && <p className="text-sm text-destructive">{error}</p>}
           <JobProgress job={job} />
           <div className="flex gap-3"><Button size="lg" onClick={run} disabled={!canRun} loading={isActive}><Play className="h-4 w-4" />Start tagging</Button><Button size="lg" variant="destructive" onClick={cancel} disabled={!isActive}><Square className="h-4 w-4" />Cancel</Button></div>
         </section>
-        <ImagePreview directoryPath={loadPath} className="min-h-[420px]" />
+        <ImagePreview directoryPath={loadPath} outputKind="tag" outputDirectory={savePath} refreshKey={`${job?.job_id}:${job?.current}:${job?.status}`} />
       </div>
     </div>
   );

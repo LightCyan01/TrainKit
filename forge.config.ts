@@ -59,6 +59,13 @@ const config: ForgeConfig = {
     ...(windowsSign ? { windowsSign } : {}),
   },
   hooks: {
+    packageAfterCopy: async (_config, buildPath) => {
+      copyDirExclude(
+        resolve(process.cwd(), "backend"),
+        join(buildPath, ".vite", "build", "backend"),
+        ["tests"],
+      );
+    },
     postPackage: async (_config, options) => {
       const backendSource = resolve(process.cwd(), "backend");
       for (const outputPath of options.outputPaths) {

@@ -30,16 +30,47 @@ export class SetupManager {
     this.runtimePath = paths.runtimePath;
   }
 
+  prepareBackend(): void {
+    if (app.isPackaged) {
+      const bundledBackend = path.join(app.getAppPath(), ".vite", "build", "backend");
+      try {
+        for (const entry of fs.readdirSync(bundledBackend, { recursive: true })) {
+          const source = path.join(bundledBackend, String(entry));
+          if (!fs.statSync(source).isFile()) continue;
+          const destination = path.join(this.backendPath, String(entry));
+          if (fs.existsSync(destination) && fs.statSync(destination).isFile()) continue;
+          fs.mkdirSync(path.dirname(destination), { recursive: true });
+          fs.copyFileSync(source, destination, fs.constants.COPYFILE_EXCL);
+        }
+      } catch (error) {
+        throw new Error(
+          "TrainKit could not restore its backend files. Extract the release ZIP to a writable folder and try again.",
+          { cause: error },
+        );
+      }
+    }
+    for (const filename of ["main.py", "pyproject.toml", "uv.lock"]) {
+      const filePath = path.join(this.backendPath, filename);
+      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        const recovery = app.isPackaged
+          ? "Extract the release ZIP again."
+          : "Restore the backend folder and try again.";
+        throw new Error(`TrainKit's backend is missing ${filename}. ${recovery}`);
+      }
+    }
+  }
+
   isSetupRequired(): boolean {
-    const venvPath = path.join(this.runtimePath, ".venv");
+    const pythonPath = process.platform === "win32"
+      ? path.join(this.runtimePath, ".venv", "Scripts", "python.exe")
+      : path.join(this.runtimePath, ".venv", "bin", "python");
     const markerPath = path.join(this.runtimePath, ".setup_complete.json");
-    if (!fs.existsSync(venvPath) || !fs.existsSync(markerPath)) return true;
+    if (!fs.existsSync(pythonPath) || !fs.existsSync(markerPath)) return true;
     try {
       const marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as {
-        version?: string;
         lockHash?: string;
       };
-      return marker.version !== app.getVersion() || marker.lockHash !== this.lockHash();
+      return marker.lockHash !== this.lockHash();
     } catch {
       return true;
     }
@@ -77,6 +108,7 @@ export class SetupManager {
     try {
       if (this.isAborting) return false;
 
+      this.prepareBackend();
       onProgress({ status: "checking", message: "Checking prerequisites..." });
       onProgress({
         status: "checking",

@@ -33,7 +33,7 @@ class FakeContext:
         if self.cancelled.is_set():
             raise JobCancelledError()
 
-    async def progress(self, current, total, message, manifest_path=None):
+    async def progress(self, current, total, message, manifest_path=None, **_preview):
         self.raise_if_cancelled()
         self.updates.append((current, total, message, manifest_path))
 

@@ -106,6 +106,8 @@ class JobResponse(BaseModel):
     error: str | None = None
     created_at: datetime
     updated_at: datetime
+    preview_source: str | None = None
+    preview_output: str | None = None
 
 
 class StatusResponse(BaseModel):

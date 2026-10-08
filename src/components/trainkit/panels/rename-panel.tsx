@@ -65,7 +65,7 @@ export function RenamePanel({ isBackendOnline }: { isBackendOnline: boolean }) {
           <JobProgress job={job} />
           <div className="flex gap-3"><Button size="lg" onClick={run} disabled={!canRun} loading={isActive}><Play className="h-4 w-4" />Start rename</Button><Button size="lg" variant="destructive" onClick={cancel} disabled={!isActive}><Square className="h-4 w-4" />Cancel</Button></div>
         </section>
-        <ImagePreview directoryPath={loadPath} className="min-h-[420px]" />
+        <ImagePreview directoryPath={loadPath} />
       </div>
     </div>
   );

@@ -16,6 +16,7 @@ export type JobStatus =
   | "completed"
   | "failed";
 export type CollisionPolicy = "fail" | "skip" | "overwrite" | "rename";
+export type ImageOutputKind = "caption" | "tag";
 
 export interface JobRecord {
   job_id: string;
@@ -29,6 +30,8 @@ export interface JobRecord {
   error: string | null;
   created_at: string;
   updated_at: string;
+  preview_source?: string | null;
+  preview_output?: string | null;
 }
 
 export interface JobEvent extends JobRecord {
@@ -99,7 +102,9 @@ export function isJobRecord(value: unknown): value is JobRecord {
     isNullableString(event.manifest_path) &&
     isNullableString(event.error) &&
     typeof event.created_at === "string" &&
-    typeof event.updated_at === "string"
+    typeof event.updated_at === "string" &&
+    (event.preview_source === undefined || isNullableString(event.preview_source)) &&
+    (event.preview_output === undefined || isNullableString(event.preview_output))
   );
 }
 

@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  nativeImage,
   session,
   shell,
   type IpcMainInvokeEvent,
@@ -15,6 +16,8 @@ import { getLogger, closeLogger } from "./logger";
 import { ProviderSettingsStore, testProviderKey } from "./provider-settings";
 import { isCloudProvider, type CloudProvider, type ProviderUpdate } from "./types/providers";
 import { canonicalPath } from "./path-grants";
+import { readImageOutput, sidecarPaths } from "./image-output";
+import { isJobEvent, type ImageOutputKind, type JobEvent } from "./types/contracts";
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) app.quit();
@@ -31,6 +34,8 @@ const EXTERNAL_HOSTS = new Set([
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".bmp"]);
 const MODEL_EXTENSIONS = new Set([".safetensors", ".param", ".bin"]);
 const IMAGE_PREVIEW_LIMIT = 32 * 1024 * 1024;
+const generatedOutputs: Record<ImageOutputKind, Map<string, string>> = { caption: new Map(), tag: new Map() };
+const latestPreviewJobs = new Map<ImageOutputKind, JobEvent>();
 const MIME_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -246,6 +251,18 @@ function sendSetupProgress(progress: SetupProgress) {
 }
 
 backendManager.onEvent((event) => {
+  if (isJobEvent(event) && (event.operation === "caption" || event.operation === "tag")) {
+    const outputs = generatedOutputs[event.operation];
+    let latestJob = latestPreviewJobs.get(event.operation);
+    if (!latestJob || event.created_at > latestJob.created_at) {
+      latestJob = event;
+      latestPreviewJobs.set(event.operation, latestJob);
+      outputs.clear();
+    }
+    if (event.job_id === latestJob.job_id && event.preview_source && event.preview_output) {
+      outputs.set(canonicalPath(event.preview_source), event.preview_output);
+    }
+  }
   mainWindow?.webContents.send("backend:event", event);
 });
 backendManager.onStatus((status) => {
@@ -419,9 +436,9 @@ ipcMain.handle("fs:listImages", async (event, sourcePath: string) => {
         : [];
     }
     if (!stats.isDirectory()) return [];
-    return (await fs.promises.readdir(sourcePath))
-      .filter((file) => IMAGE_EXTENSIONS.has(path.extname(file).toLowerCase()))
-      .map((file) => path.join(sourcePath, file))
+    return (await fs.promises.readdir(sourcePath, { withFileTypes: true }))
+      .filter((file) => (file.isFile() || file.isSymbolicLink()) && IMAGE_EXTENSIONS.has(path.extname(file.name).toLowerCase()))
+      .map((file) => path.join(sourcePath, file.name))
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
   } catch {
     return [];
@@ -434,7 +451,24 @@ ipcMain.handle("fs:readImageAsDataUrl", async (event, imagePath: string) => {
   if (!IMAGE_EXTENSIONS.has(extension)) return null;
   try {
     const stats = await fs.promises.stat(imagePath);
-    if (!stats.isFile() || stats.size > IMAGE_PREVIEW_LIMIT) return null;
+    if (!stats.isFile()) return null;
+    if (stats.size > 1024 * 1024 && (process.platform === "win32" || process.platform === "darwin")) {
+      try {
+        // Keep large originals out of the renderer; Windows thumbnails only honor width.
+        const thumbnail = await nativeImage.createThumbnailFromPath(imagePath, { width: 840, height: 840 });
+        const size = thumbnail.getSize();
+        const scale = Math.min(1, 840 / Math.max(size.width, size.height));
+        if (!thumbnail.isEmpty()) {
+          return (scale < 1 ? thumbnail.resize({
+            width: Math.max(1, Math.round(size.width * scale)),
+            height: Math.max(1, Math.round(size.height * scale)),
+          }) : thumbnail).toDataURL();
+        }
+      } catch {
+        // Some image formats have no system thumbnail provider.
+      }
+    }
+    if (stats.size > IMAGE_PREVIEW_LIMIT) return null;
     const data = await fs.promises.readFile(imagePath);
     return `data:${MIME_TYPES[extension]};base64,${data.toString("base64")}`;
   } catch {
@@ -442,9 +476,43 @@ ipcMain.handle("fs:readImageAsDataUrl", async (event, imagePath: string) => {
   }
 });
 
+ipcMain.handle("fs:readImageOutput", async (event, imagePath: string, outputDirectory: string, kind: ImageOutputKind) => {
+  trustedSender(event);
+  if (typeof imagePath !== "string" || typeof outputDirectory !== "string" || (kind !== "caption" && kind !== "tag")) {
+    throw new Error("Invalid preview request.");
+  }
+  if (!IMAGE_EXTENSIONS.has(path.extname(imagePath).toLowerCase()) || !isGranted(imagePath)) {
+    throw new Error("Choose an image using the browse button.");
+  }
+  if (outputDirectory && !isGranted(outputDirectory)) throw new Error("Choose an output folder using the browse button.");
+  const selectedImage = canonicalPath(imagePath);
+  const adjacent = sidecarPaths(selectedImage, path.dirname(selectedImage), kind);
+  const canRead = (candidate: string) => {
+    if (isGranted(candidate)) return true;
+    const resolved = canonicalPath(candidate);
+    return adjacent.some(sidecar => path.relative(sidecar, resolved) === "");
+  };
+  const generated = generatedOutputs[kind].get(selectedImage);
+  const matchingOutput = generated && outputDirectory &&
+    canonicalPath(path.dirname(generated)) === canonicalPath(outputDirectory) ? generated : undefined;
+  return readImageOutput(imagePath, outputDirectory, kind, canRead, matchingOutput);
+});
+
 async function initialize() {
   await createSplashWindow();
   const setup = getSetupManager();
+  try {
+    setup.prepareBackend();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    splashWindow?.setSize(400, 600);
+    splashWindow?.center();
+    splashWindow?.webContents.send("setup:mode");
+    sendSetupProgress({ status: "error", message });
+    updateSplashStatus("Setup failed");
+    getLogger().error("setup", message);
+    return;
+  }
   if (setup.isSetupRequired()) {
     splashWindow?.setSize(400, 600);
     splashWindow?.center();
